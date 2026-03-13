@@ -52,18 +52,27 @@ try:
 	import ww3tools
 except:
 	sys.exit("Cannot find ww3tools. Please check installation at https://github.com/NOAA-EMC/WW3-tools")
-	# pip install .
 else:
 	print(' OK: ww3tools is installed.')
 
 try:
-	from ww3tools import wread, mvalstats, pvalstats
+	from ww3tools import wread
 except:
-	sys.exit("Cannot find wread,mvalstats,pvalstats. Please check installation at https://github.com/NOAA-EMC/WW3-tools")
-	# pip install .
+	sys.exit("Cannot find wread. Please check installation at https://github.com/NOAA-EMC/WW3-tools")
 else:
-	print(' OK: ww3tools main functions are successfully installed.')			
-
+	print(' OK: ww3tools wread function is successfully installed.')			
+try:
+	from ww3tools import mvalstats
+except:
+	sys.exit("Cannot find mvalstats. Please check installation at https://github.com/NOAA-EMC/WW3-tools")
+else:
+	print(' OK: ww3tools mvalstats function is successfully installed.')			
+try:
+	from ww3tools import pvalstats
+except:
+	print("Cannot find pvalstats. Please check installation at https://github.com/NOAA-EMC/WW3-tools")
+else:
+	print(' OK: ww3tools pvalstats function is successfully installed.')			
 # --------------------------------------
 
 # Check internet -----------------------

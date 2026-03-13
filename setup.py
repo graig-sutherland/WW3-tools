@@ -28,7 +28,7 @@ setup(
         "geopy",
         "pathlib2",
         "tqdm",
-        "yaml",
+        "pyyaml",
         "boto3"]
 )
 

@@ -9,7 +9,9 @@ This script originally was developed by Steven Brus (@sbrus89) and revised by Al
 """
 
 import numpy as np
+from scipy.interpolate import LinearNDInterpolator
 import matplotlib.pyplot as plt
+import matplotlib.path as mpath
 import matplotlib.tri as tri
 import matplotlib.ticker as mticker
 import cartopy
@@ -17,7 +19,49 @@ import cartopy.crs as ccrs
 import cartopy.feature as cfeature
 from cartopy.mpl.ticker import LongitudeFormatter, LatitudeFormatter
 import argparse
+import sys, os
+from projector import stereo3
 
+def ll2xy(lon, lat, R=6378.0, lon0=0.0, lat0=np.pi/2):
+    # input in degrees
+    dlon = lon - lon0
+    k = 2*R / (1.0 + np.sin(lat0)*np.sin(lat) + np.cos(lat0)*np.cos(lat)*np.cos(dlon))
+    # output
+    x = k*np.cos(lat)*np.sin(dlon)
+    y = k*np.cos(lat0)*np.sin(lat) - k*np.sin(lat0)*np.cos(lat)*np.cos(dlon)
+    return x, y
+
+def xy2ll(x, y, R=6378.0, lon0=0.0, lat0=90.0):
+    lon0 *= np.pi/180.0
+    lat0 *= np.pi/180.0
+    p = np.sqrt(x*x + y*y)
+    c = 2.0 * np.arctan2(2.0*R, p)
+    #output
+    lat = np.arcsin(np.cos(c)*np.sin(lat0) + y*np.sin(c)*np.cos(lat0)/p)
+    dlon = np.arctan2(p*np.cos(lat0)*np.cos(c) - y*np.sin(lat0)*np.sin(c), x*np.sin(c))
+    lon = lon0 + dlon
+    return lon, lat
+
+def add_map_features(ax):
+    ax.coastlines()
+    gl = ax.gridlines()
+    ax.add_feature(cfeature.BORDERS);
+#    ax.add_feature(cfeature.NaturalEarthFeature('physical', 'land', '50m', edgecolor='k', facecolor=cfeature.COLORS['land']))
+    gl = ax.gridlines()#draw_labels=True)
+    gl.top_labels = False
+    gl.right_labels = False
+
+def polarCentral_set_latlim(lat_lims, ax):
+    ax.set_extent([-180, 180, lat_lims[0], lat_lims[1]], ccrs.PlateCarree())
+    # Compute a circle in axes coordinates, which we can use as a boundary
+    # for the map. We can pan/zoom as much as we like - the boundary will be
+    # permanently circular.
+    theta = np.linspace(0, 2*np.pi, 100)
+    center, radius = [0.5, 0.5], 0.5
+    verts = np.vstack([np.sin(theta), np.cos(theta)]).T
+    circle = mpath.Path(verts * radius + center)
+
+    ax.set_boundary(circle, transform=ax.transAxes)
 
 def read_gmsh(filename):
     #purpose: this function reads a gmsh file and returns node and element information
@@ -73,7 +117,8 @@ def read_gmsh(filename):
             if eltype == 15:
                 bndtemp.append(int(line[5]) - 1)
             else:
-                ecttemp[elem_count, :] = [int(line[6]) - 1, int(line[7]) - 1, int(line[8]) - 1]
+                #ecttemp[elem_count, :] = [int(line[6]) - 1, int(line[7]) - 1, int(line[8]) - 1]
+                ecttemp[elem_count, :] = [int(line[-3]) - 1, int(line[-2]) - 1, int(line[-1]) - 1]
                 elem_count += 1
         
         # Trim the ect array to the actual number of elements
@@ -149,9 +194,9 @@ def create_mask(xy, ect):
 
 
 
-def setup_plot(ax, extent=[-180, 180, -90, 90]):
+def setup_plot(ax, extent=[-180, 180, -90, 90], proj=ccrs.PlateCarree()):
     """ Common plot setup function """
-    ax.set_extent(extent, crs=ccrs.PlateCarree())
+    ax.set_extent(extent, crs=proj)
     ax.add_feature(cfeature.COASTLINE, zorder=101)
     gl = ax.gridlines(crs=ccrs.PlateCarree(), draw_labels=True, linewidth=2, color='gray', alpha=0.5, linestyle='--')
     gl.top_labels = False
@@ -163,75 +208,169 @@ def setup_plot(ax, extent=[-180, 180, -90, 90]):
     gl.xformatter = LongitudeFormatter()
     gl.yformatter = LatitudeFormatter()
 
-def plot_eleminfo(plotdescriptor, xy, ect, distmin, distmax, depth, highlight_nodes=None, named_points=None):
-
+def plot_eleminfo(plotdescriptor, xy, ect, distmin, distmax, depth, highlight_nodes=None, extent=[-180, 180, -90, 90], plotDir='./', region='Global'):
     print('Grid')
     print(plotdescriptor)
     print('Min/max of distmin:', np.min(distmin), np.max(distmin))
     print('Min/max of distmax:', np.min(distmax), np.max(distmax))
     print('Min/max of bathy:', np.min(depth), np.max(depth))
 
-    mask = create_mask(xy,ect)
   
-  #create one tringulation and use it for multiple plots: 
-    triang=tri.Triangulation(xy[:,0],xy[:,1],triangles=ect, mask=mask)
-    vpltmin=1
-    vpltmax= 30
-        
-
+    #create one tringulation and use it for multiple plots: 
+    ## first check if region is Arctic
+    if region.startswith('Arctic') or region.startswith('ARC'):
+        proj = ccrs.NorthPolarStereo()
+        x,y,_ = proj.transform_points(ccrs.PlateCarree(), xy[:,0], xy[:,1]).T
+        pmask = np.invert(np.logical_or(np.isinf(x), np.isinf(y)))
+        xy[:,0] = np.compress(pmask, x)
+        xy[:,1] = np.compress(pmask, y)
+        triang=tri.Triangulation(xy[:,0],xy[:,1],triangles=ect)#, mask=mask)
+    else:
+        if region.startswith('Svalbard'):
+            proj = ccrs.Stereographic(central_latitude=75, central_longitude=30)
+        else:
+            ## next plot global on Robinson projection
+            proj = ccrs.Robinson()
+        x, y, _ = proj.transform_points(ccrs.PlateCarree(), xy[:,0], xy[:,1]).T
+        pmask = np.invert(np.logical_or(np.isinf(x), np.isinf(y)))
+        xy[:,0] = np.compress(pmask, x)
+        xy[:,1] = np.compress(pmask, y)
+        mask = create_mask(xy,ect)
+        triang=tri.Triangulation(xy[:,0],xy[:,1],triangles=ect, mask=mask)
+    if 'NWA' in plotdescriptor or 'ARC' in plotdescriptor:
+        print(f"{plotdescriptor} is RDWPS region. Changing plot limits.")
+        vpltmin = 1
+        vpltmax = 5
+    else:
+        vpltmin=5
+        vpltmax= 50
+    
     # Shared figure setup
     figsize = [18.0, 9.0]
+#    plots = [
+#        ('elm', 'b-', 'Element outlines', None, 'jet')
+#        ]
+    elm_shad = 'gouraud' # can be flat or auto
+    elm_cmap = 'plasma_r'
     plots = [
-        ('elm', 'k-', 'Element outlines', None, 'jet'),
-        ('maxsize', distmax, 'Element size in km', 'gouraud', 'jet'),
-        ('minsize', distmin, 'Element size in km', 'gouraud', 'jet'),
+        ('elm', 'b-', 'Element outlines', None, 'jet'),
+        ('maxsize', distmax, 'Element size in km', elm_shad, elm_cmap),
+        ('minsize', distmin, 'Element size in km', elm_shad, elm_cmap),
         ('bathy', depth, 'Bathymetry in m', None, 'jet')
     ]
 
     for suffix, data, label, shading, cmap in plots:
         fig = plt.figure(figsize=figsize)
-        ax = fig.add_subplot(1, 1, 1, projection=ccrs.PlateCarree())
-        setup_plot(ax)
+        ax = fig.add_subplot(1, 1, 1, projection=proj)
+        if not region.startswith('Arctic'): setup_plot(ax, extent=extent)
         if suffix == 'elm':
-            cf = ax.triplot(triang, 'k-', linewidth=0.5)
+            cf = ax.triplot(triang, data, linewidth=0.1)
         else:
             cf = ax.tripcolor(triang, data, cmap=cmap, shading=shading if shading else 'flat', vmin=vpltmin, vmax=vpltmax if data is not depth else None)
-            plt.colorbar(mappable=cf, label=label)
+            plt.colorbar(mappable=cf, label=label, fraction=0.036, pad=0.04)
 
-        if highlight_nodes is not None and suffix == 'elm':
-            ax.scatter(xy[highlight_nodes, 0], xy[highlight_nodes, 1], color='red', s=100, zorder=102, transform=ccrs.PlateCarree())
-        # --- ADD THIS BLOCK FOR NAMED POINTS ---
-        if named_points is not None and len(named_points) > 0:
-            for lon, lat, name in named_points:
-                if lon > 180 : 
-                    lon = lon - 360 
-                ax.scatter(lon, lat, color='black', s=10, marker='o', zorder=103, transform=ccrs.PlateCarree())
-                ax.text(lon, lat, name, fontsize=10, color='black', zorder=104, transform=ccrs.PlateCarree(), ha='left', va='bottom')
-        # ---------------------------------------
+#        if highlight_nodes is not None and suffix == 'elm':
+#            ax.scatter(xy[highlight_nodes, 0], xy[highlight_nodes, 1], color='red', s=16, zorder=102)
+        
+        if region.startswith('Arctic'):
+            polarCentral_set_latlim([extent[2],extent[3]], ax)
+        add_map_features(ax)
+
+        fig.savefig(os.path.join(plotDir, f'{suffix}_{plotdescriptor}_{region}.png'))
+        plt.close(fig)
+def write_gmsh_mesh(filename, node_data, tri):
+    num_nodes = node_data.shape[0]
+
+    # Write the mesh to the file
+    with open(filename, 'w') as fileID:
+        fileID.write("$MeshFormat\n")
+        fileID.write("2 0 8\n")
+        fileID.write("$EndMeshFormat\n")
+        fileID.write("$Nodes\n")
+        fileID.write(str(num_nodes) + "\n")
+
+        for i in range(num_nodes):
+            fileID.write(
+                f"{i + 1}  {node_data[i, 0]:5.5f} {node_data[i, 1]:5.5f} {node_data[i, 2]:5.5f}\n"
+            )
+
+        fileID.write("$EndNodes\n")
+        fileID.write("$Elements\n")
+        num_elements = len(tri)
+        fileID.write(str(num_elements) + "\n")
+
+        m = 0
+        for i in range(len(tri)):
+            m += 1
+            fileID.write(f"{m} 2 3 0 {i+1} 0 {tri[i][0]} {tri[i][1]} {tri[i][2]}\n")
+
+        fileID.write("$EndElements\n")
+
+#filename = "./uglo_poly_nBlkS.ww3"
+#descriptor = "uglo_poly_nBlkS"
+#descriptor = "25km_unstr_uniform"
+descriptor = sys.argv[1]
+region = sys.argv[2]
+print(f"Looking at mesh {descriptor} in region {region}")
+filename = f"./data/{descriptor}.ww3"
+#filename = f"/home/gsu000/l5/GDWPS/unstruc_oceanmesh2d/{descriptor}.ww3"
+#filename = f"/home/gsu000/l5/RDWPS/nwaunstr/{descriptor}.ww3"
+
+plot_regions = {
+        "EastCoast":[-70, -45, 42, 62],
+        "Global":[-180, 180, -90, 90],
+        "WestCoast": [-135, -122, 48, 55],
+        "Arctic":[-180, 180, 75, 90],
+        "ArcticPole":[-180,180,88,90],
+        "NoPoleArctic":[150,180,80,89.5],
+        "GSL":[-70, -55, 45, 52],
+        "GulfOfMexico":[-98,-83,19,30],
+        "NWA":[-98,-38, 25, 70],
+        "ARC":[-180, 180, 50, 90],
+        "Svalbard":[-20, 30, 75, 82]
+        }
+
+xy, depth, ect, bnd =  read_gmsh(filename)
 
 
-        plt.savefig(f'{suffix}_{plotdescriptor}_{name}.png')
-        #plt.close()
+## maximum latitude
+if region.startswith('Arctic'):
+    max_lat = xy[:,-1].max()
+    inod = np.argmax(xy[:,1])
+    nod = inod + 1
+    #max_lat_cos = np.cos(max_lat*np.pi/180)
+    print(f'Max lat is {max_lat:.5f} correpsonding to node {nod}')
+    ## find elements with one node as max
+    itot = np.where(ect==inod)
+    highlight_elms = itot[0]
+    highlighted_nodes = []
+    elem_lat_max = -90.0
+    for el in highlight_elms:
+        latm, lonm = 0.0, 0.0
+        for n in ect[el,:]:
+            lonm += xy[n,0]
+            latm += xy[n,1]
+            if n not in highlighted_nodes:
+                highlighted_nodes.append(n)
+        lonm /= 3
+        latm /= 3
+        if latm > elem_lat_max:
+            elem_max = el
+            elem_lat_max = latm
+            elem_lon_max = lonm
+        print(f"Element: {el}")
+        print(f"Nodes: {ect[el,0]+1}, {ect[el,1]+1}, {ect[el,2]+1} : Mean Lon/Lat {lonm:.3f}/{latm:.3f}")
+    print('Lon/Lat of highlighted nodes are:')
+    for n in highlighted_nodes:
+        print(f' Node {n+1}: {xy[n,0]:9.3f} E, {xy[n,1]:.3f} N')
+    print(f"Maximum element is {elem_max} with cell lat of {elem_lat_max:.3f}")
+else:
+    highlighted_nodes = []
 
-def main():
-    parser = argparse.ArgumentParser(description='Plot mesh information from a gmsh file.')
-    parser.add_argument('--filename', type=str, required=True, help='Path to the gmsh file')
-    parser.add_argument('--descriptor', type=str, required=True, help='Descriptor for output plot filenames')
-    args = parser.parse_args()
 
-    filename = args.filename
-    descriptor = args.descriptor
-
-    xy, depth, ect, bnd =  read_gmsh(filename)
-    distmin, distmax = calc_elm_size(xy, ect)
-    highlighted_nodes = []  # Replace with your actual node indices, e.g. [12776, 13923]
-    named_points = [] # Replace with similar list as seen below: 
-    #named_poins = [ 
-    #(-165.475,   64.473,  "46265"),
-    #(-157.750,   21.480,  "51207"),
-    # # ...
-    #]
-    plot_eleminfo(descriptor, xy, ect, distmin, distmax, depth, highlight_nodes=highlighted_nodes, named_points=named_points)
-
-if __name__ == "__main__":
-    main()
+distmin, distmax = calc_elm_size(xy, ect)
+#highlighted_nodes = [inod]# Replace with your actual node indices , 12776, 13923
+extent = plot_regions[region]
+plotDir = f'/home/gsu000/public_html/GDWPS/unstruc/{descriptor}/mesh'
+if not os.path.exists(plotDir): os.makedirs(plotDir)
+plot_eleminfo(descriptor, xy, ect, distmin, distmax, depth, highlight_nodes=highlighted_nodes, extent=extent, plotDir=plotDir, region=region)
