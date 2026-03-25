@@ -1,8 +1,9 @@
 {
     "directories": {
-        "GFSv16": "/scratch4/NCEPDEV/marine/Ming.Chen/wave_eval/processsatdata_ursa/outcombine",
-        "Retrotests": "/scratch4/NCEPDEV/marine/Ming.Chen/wave_eval/processsatdata_ursa/outcombine"
+        "GFSv16": "/work2/noaa/marine/ming.chen/GFS_Retro_Data/data/outcombine/2022_hurricane",
+        "retrov17_01": "/work2/noaa/marine/ming.chen/GFS_Retro_Data/data/outcombine/2022_hurricane"
     },
+    "filenames_all": "combined",
     "filenames": [
         "combined_day01",
         "combined_day02",
@@ -22,6 +23,6 @@
         "combined_day16"
     ],
     "satellite_name": "CRYOSAT2",
-    "season": "winter",
-    "output_dir": "/scratch4/NCEPDEV/marine/Ming.Chen/wave_eval/processsatdata_ursa/outeval/winter"
+    "season": "Hurricane",
+    "output_dir": "/work2/noaa/marine/ming.chen/GFS_Retro_Data/data/outeval/2022_hurricane/CRYOSAT2"
 }
