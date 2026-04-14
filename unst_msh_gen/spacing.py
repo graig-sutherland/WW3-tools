@@ -155,6 +155,27 @@ def swe_wavelength_spacing(
 
     return vals
 
+def tanh_wavelength_spacing(
+        elev, land, hmin, hmax, hcenter=100, hbeta=0.02, 
+        grav=9.80665):
+    
+    print("Computing tangential spacing")
+    # scale hmin to ensure I reach it at H = 1 m. A function of hcenter and hbeta
+    T = 1.0 + np.tanh(hbeta*(1.0-hcenter))
+    hscl = (0.5*T*hmax - hmin) / (0.5*T*hmin - hmin)
+    print(f"Scaling hmin by {hscl:.3f} to ensure it is reached at H = 1m")
+    
+    vals = np.maximum(1, -elev)
+    vals = (hmax-hscl*hmin)*0.5*(1 + np.tanh(hbeta*(vals-hcenter))) + hscl*hmin
+
+    vals[np.logical_and(elev >= -4., elev <= 4.)] = hmin
+
+    vals = np.maximum(vals, hmin)
+    vals = np.minimum(vals, hmax)
+
+    vals = np.asarray(vals, dtype=np.float32)
+
+    return vals
 
 def elev_sharpness_spacing(
         xlon, ylat, 

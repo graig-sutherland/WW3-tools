@@ -1,0 +1,184 @@
+ 
+#-----------------------------------------------------------------------
+#
+#   ,o, ,o,       /                                 
+#    `   `  e88~88e  d88~\   /~~~8e Y88b    e    / 
+#   888 888 88   88 C888         88b Y88b  d8b  /   
+#   888 888 "8b_d8"  Y88b   e88~-888  Y888/Y88b/  
+#   888 888  /        888D C88   888   Y8/  Y8/     
+#   88P 888 Cb      \_88P   "8b_-888    Y    Y    
+# \_8"       Y8""8D                             
+#
+#-----------------------------------------------------------------------
+# JIGSAW: an unstructured mesh generation library.  
+#-----------------------------------------------------------------------
+ 
+  JIGSAW VERSION 1.1.0
+
+  CFG. data summary...
+
+  GEOM-FILE = geom.msh
+  MESH-FILE = ./data/25km_to_5km_tanh_h0150_hb001_scl_50kmN86.msh
+  HFUN-FILE = ./data/spac.msh
+  INIT-FILE = 
+  TRIA-FILE = 
+  BNDS-FILE = 
+
+  NUMTHREAD = 256
+
+  GEOM-SEED = 8
+  GEOM-PHI1 = 6.00e+01
+  GEOM-PHI2 = 6.00e+01
+  GEOM-ETA1 = 4.50e+01
+  GEOM-ETA2 = 4.50e+01
+  GEOM-FEAT = FALSE
+
+  INIT-NEAR = 1.00e-08
+
+  HFUN-SCAL = ABSOLUTE 
+  HFUN-HMAX = 2.50e+01
+  HFUN-HMIN = 5.00e+00
+
+  BNDS-KERN = BND-TRIA 
+  MESH-KERN = DELFRONT 
+  MESH-ORPH = TRUE
+  MESH-LOCK = FALSE
+  MESH-TOP1 = FALSE
+  MESH-TOP2 = FALSE
+  MESH-ITER = MAXINT
+  MESH-DIMS = 2
+  MESH-SIZ1 = 1.33e+00
+  MESH-SIZ2 = 1.31e+00
+  MESH-SIZ2 = 1.30e+00
+  MESH-EPS1 = 4.17e-01
+  MESH-EPS2 = 4.17e-01
+  MESH-RAD2 = 1.05e+00
+  MESH-RAD3 = 2.05e+00
+  MESH-OFF2 = 9.00e-01
+  MESH-OFF3 = 1.10e+00
+  MESH-SNK2 = 2.00e-01
+  MESH-SNK3 = 3.33e-01
+  MESH-VOL3 = 0.00e+00
+
+  OPTM-KERN = CVT+DQDX 
+  OPTM-ITER = 64
+  OPTM-COST = SKEW-COS 
+  OPTM-BETA = 4.95e-01
+  OPTM-ZETA = 8.25e-01
+  OPTM-QTOL = 1.00e-05
+  OPTM-QLIM = 9.50e-01
+  OPTM-WMIN =-8.75e-01
+  OPTM-WMAX = 1.25e-02
+  OPTM-ZIP_ = TRUE
+  OPTM-DIV_ = TRUE
+  OPTM-TRIA = TRUE
+  OPTM-DUAL = FALSE
+
+  Done. (2.500e-04sec)
+
+#-----------------------------------------------------------------------
+
+  Reading GEOM file...
+
+  Done. (2.600e-05sec)
+
+#-----------------------------------------------------------------------
+
+  Forming GEOM data...
+
+  GEOM data summary...
+
+  ELLIPSOID-MESH
+
+  |NDIMS.| = 3
+
+  |1-RAD.| = 6.37e+03
+  |2-RAD.| = 6.37e+03
+  |3-RAD.| = 6.37e+03
+
+  |COORD.| = 0
+  |EDGE-2| = 0
+
+  |SEEDS.| = 0
+
+  Done. (8.600e-05sec)
+
+#-----------------------------------------------------------------------
+
+  Reading HFUN file...
+
+  Done. (1.141e+01sec)
+
+#-----------------------------------------------------------------------
+
+  Forming HFUN data...
+
+  HFUN data summary...
+
+  ELLIPSOID-GRID
+
+  |NDIMS.| = 2
+  .MIN(H). = 5.00e+00
+  .MAX(H). = 5.00e+01
+  
+  |MASKED| = 0
+  
+  |XGRID.| = 21601
+  |YGRID.| = 10801
+  
+  PERIODIC = TRUE
+
+  Done. (1.189e+00sec)
+
+#-----------------------------------------------------------------------
+
+  Generate rDT MESH...
+
+#-----------------------------------------------------------------------
+#     |ITER.|       |DEL-1|       |DEL-2|       |DEL-3| 
+#-----------------------------------------------------------------------
+       10000             0         20016             0
+       25000             0         50016             0
+       50000             0        100016             0
+       75000             0        150016             0
+      100000             0        200016             0
+      250000             0        500016             0
+      500000             0       1000016             0
+      750000             0       1500016             0
+     1000000             0       2000016             0
+     2050255             0       4100524             0
+
+  Done. (3.639e+01sec)
+
+#-----------------------------------------------------------------------
+
+  Forming MESH data...
+
+  Done. (4.818e+00sec)
+
+#-----------------------------------------------------------------------
+
+  MESH optimisation...
+
+#-----------------------------------------------------------------------
+#     |MOVE.|       |FLIP.|       |MERGE|       |SPLIT| 
+#-----------------------------------------------------------------------
+     1801345           780         31755          6711
+     1808739           147          5513           672
+     1716559            20           694            17
+     1555239             0            19             0
+      904513             0             0             0
+       37387             0             0             0
+         965             0             0             0
+          23             0             0             0
+           6             0             0             0
+           0             0             0             0
+
+  Done. (1.945e+02sec)
+
+#-----------------------------------------------------------------------
+
+  Writing MESH file...
+
+  Done. (3.046e+00sec)
+

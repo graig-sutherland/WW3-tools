@@ -1,0 +1,1 @@
+/home/gsu000/data/ppp8/BathyData/RTopo_2_0_4_GEBCO_v2023_60sec_pixel.nc

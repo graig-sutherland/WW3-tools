@@ -208,7 +208,7 @@ def setup_plot(ax, extent=[-180, 180, -90, 90], proj=ccrs.PlateCarree()):
     gl.xformatter = LongitudeFormatter()
     gl.yformatter = LatitudeFormatter()
 
-def plot_eleminfo(plotdescriptor, xy, ect, distmin, distmax, depth, highlight_nodes=None, extent=[-180, 180, -90, 90], plotDir='./', region='Global'):
+def plot_eleminfo(plotdescriptor, xy, ect, distmin, distmax, depth, highlight_nodes=None, extent=[-180, 180, -90, 90], plotDir='./', region='Global', station=[]):
     print('Grid')
     print(plotdescriptor)
     print('Min/max of distmin:', np.min(distmin), np.max(distmin))
@@ -242,8 +242,8 @@ def plot_eleminfo(plotdescriptor, xy, ect, distmin, distmax, depth, highlight_no
         vpltmin = 1
         vpltmax = 5
     else:
-        vpltmin=5
-        vpltmax= 50
+        vpltmin=np.round(np.min(distmin))
+        vpltmax= np.round(np.max(distmax))
     
     # Shared figure setup
     figsize = [18.0, 9.0]
@@ -275,6 +275,8 @@ def plot_eleminfo(plotdescriptor, xy, ect, distmin, distmax, depth, highlight_no
         if region.startswith('Arctic'):
             polarCentral_set_latlim([extent[2],extent[3]], ax)
         add_map_features(ax)
+        if len(station) > 0:
+            ax.plot(station[0], station[1], 'rx', transform=ccrs.PlateCarree())
 
         fig.savefig(os.path.join(plotDir, f'{suffix}_{plotdescriptor}_{region}.png'))
         plt.close(fig)
@@ -315,7 +317,7 @@ print(f"Looking at mesh {descriptor} in region {region}")
 filename = f"./data/{descriptor}.ww3"
 #filename = f"/home/gsu000/l5/GDWPS/unstruc_oceanmesh2d/{descriptor}.ww3"
 #filename = f"/home/gsu000/l5/RDWPS/nwaunstr/{descriptor}.ww3"
-
+doff = 0.5
 plot_regions = {
         "EastCoast":[-70, -45, 42, 62],
         "Global":[-180, 180, -90, 90],
@@ -327,8 +329,18 @@ plot_regions = {
         "GulfOfMexico":[-98,-83,19,30],
         "NWA":[-98,-38, 25, 70],
         "ARC":[-180, 180, 50, 90],
-        "Svalbard":[-20, 30, 75, 82]
+        "Svalbard":[-20, 30, 75, 82],
+        "Ausuittuq":[-82.896-doff, -82.896+doff, 76.416-doff, 76.416+doff],
+        "Ikaluktutiak":[-115.062-doff, -115.062+doff, 67.846-doff, 67.846+doff],
+        "Kugluktuk":[-105.634-doff, -105.634+doff, 69.166-doff, 69.166+doff]
         }
+
+plot_stations = {
+        "Ausuittuq":[-82.896, 76.416],
+        "Ikaluktutiak":[-115.062, 67.846],
+        "Kugluktuk":[-105.634, 69.166]
+        }
+
 
 xy, depth, ect, bnd =  read_gmsh(filename)
 
@@ -371,6 +383,10 @@ else:
 distmin, distmax = calc_elm_size(xy, ect)
 #highlighted_nodes = [inod]# Replace with your actual node indices , 12776, 13923
 extent = plot_regions[region]
-plotDir = f'/home/gsu000/public_html/GDWPS/unstruc/{descriptor}/mesh'
+if region in plot_stations.keys():
+    station = plot_stations[region]
+else:
+    station = []
+plotDir = f'/home/gsu000/public_html/GDWPS/unstruc/mesh'
 if not os.path.exists(plotDir): os.makedirs(plotDir)
-plot_eleminfo(descriptor, xy, ect, distmin, distmax, depth, highlight_nodes=highlighted_nodes, extent=extent, plotDir=plotDir, region=region)
+plot_eleminfo(descriptor, xy, ect, distmin, distmax, depth, highlight_nodes=highlighted_nodes, extent=extent, plotDir=plotDir, region=region, station=station)

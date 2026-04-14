@@ -35,6 +35,8 @@ def load_configuration(config_path):
     hmax = float(config.get('Spacing', 'hmax', fallback='100.0'))
     hmin = float(config.get('Spacing', 'hmin', fallback='100.0'))
     nwav = int(config.get('Spacing', 'nwav', fallback='-400'))
+    hcenter = float(config.get('Spacing', 'hcenter', fallback='-100'))
+    hbeta = float(config.get('Spacing', 'hbeta', fallback='-100'))
     arctic_hmax_lat = float(config.get('MeshSettings', 'arctic_hmax_lat', fallback='90'))
     arctic_hmax_val = float(config.get('MeshSettings', 'arctic_hmax_val', fallback='100'))
 
@@ -62,9 +64,9 @@ def load_configuration(config_path):
     dem_file = config['DataFiles']['dem_file'] if 'dem_file' in config['DataFiles'] else None
 
 
-    return windows, shapefiles, dem_file, gaussian, mask_file, hmax, hmin, nwav, arctic_hmax_lat, arctic_hmax_val
+    return windows, shapefiles, dem_file, gaussian, mask_file, hmax, hmin, nwav, arctic_hmax_lat, arctic_hmax_val, hcenter, hbeta
 
-def create_mask_file(data_filename, output_filename, windows=None, shapefiles=None, gaussian=None, hmax=25, hmin=25, nwav=-400, arctic_hmax_lat=90., arctic_hmax_val=25):
+def create_mask_file(data_filename, output_filename, windows=None, shapefiles=None, gaussian=None, hmax=25, hmin=25, nwav=-400, arctic_hmax_lat=90., arctic_hmax_val=25, hcenter=-100, hbeta=0.1):
     # Load DEM data
     data = nc.Dataset(data_filename, "r")
     xlon = np.asarray(data["lon"][:])
@@ -86,11 +88,19 @@ def create_mask_file(data_filename, output_filename, windows=None, shapefiles=No
         
     scal[land] = hmax
     # apply SWE scaling
-    if (nwav > 0.0):
-        print(f"Calculating depth dependent size for nwave = {nwav}")
-        scal = np.minimum(
-            scal, swe_wavelength_spacing(
-                elev, land, nwav, hmin, hmax))
+    if (nwav > 0) and (hcenter > 0):
+        import sys; sys.exit("Can not have both nwav > 0 and hcenter > 0")
+    else:
+        if (nwav > 0.0):
+            print(f"Calculating depth dependent size for nwave = {nwav}")
+            scal = np.minimum(
+                scal, swe_wavelength_spacing(
+                    elev, land, nwav, hmin, hmax))
+        if (hcenter > 0.0):
+            print(f"Calculating depth dependent size for tanh centered at {hcenter} and stretching {hbeta}")
+            scal = np.minimum(
+                scal, tanh_wavelength_spacing(
+                    elev, land, hmin, hmax, hcenter, hbeta))
     # check if I want to change the sizing after the mask_file is applied
     if arctic_hmax_lat < 90:
         print(f"create_siz: Applying scale of {arctic_hmax_val} km for lat > {arctic_hmax_lat:.1f}")
@@ -188,6 +198,6 @@ def create_mask_file(data_filename, output_filename, windows=None, shapefiles=No
 
 if __name__ == "__main__":
     args = parse_input_args()
-    windows, shapefiles, dem_file, gaussian, mask_file, hmax, hmin, nwav, arctic_hmax_lat, arctic_hmax_val = load_configuration(args.config)
-    create_mask_file(dem_file, mask_file, windows, shapefiles, gaussian, hmax, hmin, nwav, arctic_hmax_lat, arctic_hmax_val)
+    windows, shapefiles, dem_file, gaussian, mask_file, hmax, hmin, nwav, arctic_hmax_lat, arctic_hmax_val, hcenter, hbeta = load_configuration(args.config)
+    create_mask_file(dem_file, mask_file, windows, shapefiles, gaussian, hmax, hmin, nwav, arctic_hmax_lat, arctic_hmax_val, hcenter, hbeta)
 

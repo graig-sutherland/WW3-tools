@@ -8,13 +8,13 @@ import sys
 # ================================================
 MACHINE = "ursa" # or orion/herculus
 
-ROOTDIR = "/scratch4/NCEPDEV/marine/Ming.Chen/wave_eval/processsatdata/jobsubs"   # output jobcards directory
-THISDIR = "/scratch4/NCEPDEV/marine/Ming.Chen/wave_eval/WW3-tools/hr-eval"               # working directory
-PATHTOWW3TOOLS = "/scratch4/NCEPDEV/marine/Ming.Chen/wave_eval/WW3-tools/ww3tools"       # ww3tools directory (ProcSat_Altimeter.py)
-OUT_BASE = "/scratch4/NCEPDEV/marine/Ming.Chen/wave_eval/processsatdata/out" # output directory for processed data (origional defined in .yaml)
+ROOTDIR = "/home/gsu000/data/ppp7/ww3tools/processsatdata/jobsubs"   # output jobcards directory
+THISDIR = "/home/gsu000/projects/WW3-tools/hr-eval"               # working directory
+PATHTOWW3TOOLS = "/home/gsu000/projects/WW3-tools/ww3tools"       # ww3tools directory (ProcSat_Altimeter.py)
+OUT_BASE = "/home/gsu000/data/ppp7/ww3tools/processsatdata/out" # output directory for processed data (origional defined in .yaml)
 
-STARTDATE = "2024-11-15" # start date with formats YYYY-MM-DD or YYYYMMDD
-ENDDATE   = "2025-01-15" # end date with formats YYYY-MM-DD or YYYYMMDD
+STARTDATE = "2024-04-15" # start date with formats YYYY-MM-DD or YYYYMMDD
+ENDDATE   = "2024-05-15" # end date with formats YYYY-MM-DD or YYYYMMDD
 
 SATELLITES = "JASON3,CRYOSAT2,SARAL,SENTINEL3A" # satellites using comma or space separated
 
