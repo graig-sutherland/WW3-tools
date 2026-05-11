@@ -66,12 +66,13 @@ def load_configuration(config_path):
 
     return windows, shapefiles, dem_file, gaussian, mask_file, hmax, hmin, nwav, arctic_hmax_lat, arctic_hmax_val, hcenter, hbeta
 
-def create_mask_file(data_filename, output_filename, windows=None, shapefiles=None, gaussian=None, hmax=25, hmin=25, nwav=-400, arctic_hmax_lat=90., arctic_hmax_val=25, hcenter=-100, hbeta=0.1):
+
+def create_mask_file(data_filename, output_filename, windows=None, shapefiles=None, gaussian=None, hmax=25, hmin=25, nwav=-400, arctic_hmax_lat=90., arctic_hmax_val=25, hcenter=-100, hbeta=0.1, gshhs=False):
     # Load DEM data
     data = nc.Dataset(data_filename, "r")
     xlon = np.asarray(data["lon"][:])
     ylat = np.asarray(data["lat"][:])
-    elev = np.asarray(data["bed_elevation"][:], dtype=np.float32) + np.asarray(data["ice_thickness"][:], dtype=np.float32)
+    elev = np.asarray(data["bed_elevation"][:], dtype=np.float32) #+ np.asarray(data["ice_thickness"][:], dtype=np.float32)
 
     # Compute midpoints for longitude and latitude
     xmid = 0.5 * (xlon[:-1] + xlon[1:])

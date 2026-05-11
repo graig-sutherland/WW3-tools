@@ -16,6 +16,7 @@ import jigsawpy
 
 from scipy.interpolate import RegularGridInterpolator
 from scipy.sparse import csr_matrix
+from scipy.sparse import coo_matrix
 from scipy.sparse.csgraph import connected_components
 
 from spacing import *
@@ -35,18 +36,32 @@ def load_configuration(config_path):
         'mesh_file': config.get('MeshSettings', 'mesh_file', fallback=''),
         'ww3_mesh_file':config.get('MeshSettings', 'WW3_mesh_file', fallback=''),
         'hfun_hmax': float(config.get('MeshSettings', 'hfun_hmax', fallback='100')),
+        'hfun_hmin': float(config.get('MeshSettings', 'hfun_hmin', fallback='100')),
         'black_sea': config.getint('CommandLineArgs', 'black_sea', fallback=3),
+        'arctic_lim': config.getint('CommandLineArgs', 'arctic_lim', fallback=90),
         'mask_file': config.get('CommandLineArgs', 'mask_file', fallback=''),
         'hmax': float(config.get('Spacing', 'hmax', fallback='100.0')),
         'hshr': float(config.get('Spacing', 'hshr', fallback='100')),
         'nwav': int(config.get('Spacing', 'nwav', fallback='400')),
         'hmin': float(config.get('Spacing', 'hmin', fallback='100.0')),
         'dhdx': float(config.get('Spacing', 'dhdx', fallback='0.05')),
-        'dem_file': config.get('DataFiles', 'dem_file', fallback='')
+        'dem_file': config.get('DataFiles', 'dem_file', fallback=''),
+        'pslg_file': config.get('DataFiles', 'pslg_file', fallback=''),
+        'arctic_hmax_lat': float(config.get('MeshSettings', 'arctic_hmax_lat', fallback='90')),
+        'arctic_hmax_val': float(config.get('MeshSettings', 'arctic_hmax_val', fallback='100')),
+        
     }
     return configurations
 
-ISOLATED = 30000.  # min surface area [km^2]
+def great_circle(R, lon1, lat1, lon2, lat2):
+    '''
+    returns great circle distance using spherical law of cosines
+    '''
+    dlon = lon2 - lon1
+    distance = R * np.arccos(np.sin(lat1)*np.sin(lat2) + np.cos(lat1)*np.cos(lat2)*np.cos(dlon))
+    return distance
+
+ISOLATED = 30000.*1e0  # min surface area [km^2]
 
 # just global objects, to keep things simple...
 geom = jigsawpy.jigsaw_msh_t()
@@ -64,7 +79,7 @@ def create_msh():
     print("*create-msh...")
 
     opts.geom_file = "geom.msh"  #saves the geometry info for jigsaw
-    opts.hfun_file = "spac.msh"  #saves the final mesh spacing info 
+    opts.hfun_file = "./data/spac.msh"  #saves the final mesh spacing info 
     opts.jcfg_file = "opts.jig"  #jigsaw ctlr file
     
     geom.mshID = "ellipsoid-mesh"
@@ -84,9 +99,16 @@ def create_msh():
     
     opts.hfun_scal = "absolute"
     opts.hfun_hmax = configurations['hfun_hmax']           # global maximum mesh resolution (similar to hmax)
+    opts.hfun_hmin = configurations['hfun_hmin']           # global maximum mesh resolution (similar to hmax)
     opts.mesh_dims = +2             # 2-dim. simplexes
-    opts.optm_iter = +64            # number of itereation for the optimization
+    opts.optm_iter = +64           # number of itereation for the optimization
+    opts.optm_kern = "cvt+dqdx"
     opts.optm_cost = "skew-cos"
+    opts.optm_qlim = +9.5E-01
+    opts.optm_qtol = +1.0E-05
+    opts.optm_tria = True
+    opts.optm_dual = False
+    opts.verbosity = +1
 
     jigsawpy.cmd.jigsaw(opts, mesh)
     
@@ -101,11 +123,14 @@ def create_siz():
     hmax = configurations['hmax'] # maximum spacing [km] 
     hshr = configurations['hshr']   # shoreline spacing
     nwav = configurations['nwav']   # number of cells per sqrt(g*H)
-    hmin = configurations['hmin']  # minimum spacing
+    hmin = configurations['hfun_hmin']  # minimum spacing
     dhdx = configurations['dhdx']  # allowable spacing gradient: for more gradual transition use lower value
     mask_file = configurations['mask_file'] #user defined scaling file
+    arctic_hmax_lat = configurations['arctic_hmax_lat']
+    arctic_hmax_val = configurations['arctic_hmax_val']
     # Load the DEM file from the config
     dem_file = configurations['dem_file']
+    print(f' ... dem file is {dem_file}')
 
     data = nc.Dataset(dem_file,"r")
 
@@ -125,6 +150,7 @@ def create_siz():
     hmat[land] = hmax
 
     if (nwav > 0.0):
+        print(f"Calculating depth dependent size for nwave = {nwav}")
         hmat = np.minimum(
             hmat, swe_wavelength_spacing(
                 elev, land, nwav, hmin, hmax))
@@ -136,15 +162,25 @@ def create_siz():
     hmat = setup_shoreline_pixels(hmat, land, hshr)
    
 #-- apply user-defined scaling: multiply h(x) by mask array
-
     if mask_file:
-        hmat = scale_spacing_via_mask(args, hmat)
-        print("Scaling applied using mask_file:", mask_file)
+        print(f"create_siz: Scaling applied using mask_file: {mask_file}")
+        ds = nc.Dataset(mask_file, "r")
+        hmat = np.asarray(ds["val"][:,:], dtype=float)
+        ds.close()
+        #hmat = scale_spacing_via_mask(args, hmat)
     else:
     # Handle case where mask_file is not provided
-        print("No mask file provided. Proceeding without scaling...")
+        print("create_siz: No mask file provided. Proceeding without scaling...")
 
-#-- and a little nonlinear smoothing
+    # check if I want to change the sizing after the mask_file is applied
+    if arctic_hmax_lat < 90:
+        print(f"create_siz: Applying scale of {arctic_hmax_val} km for lat > {arctic_hmax_lat:.1f}")
+        ymid = 0.5*(ylat[:-1]+ylat[1:])
+        hmat[ymid>arctic_hmax_lat,:] = arctic_hmax_val
+    else:
+        print(f"create_siz: No Arctic max val and using prescribed hmat val")
+
+#-- a little nonlinear smoothing
     
     filt = filter_pixels_harmonic(hmat, exp=2)
     hmat = np.minimum(hmat, filt)
@@ -162,32 +198,26 @@ def create_siz():
     spac.radii = geom.radii
     spac.xgrid = xlon * np.pi / 180.
     spac.ygrid = ylat * np.pi / 180.
-
-    xmat, ymat = np.meshgrid(
-        spac.xgrid, spac.ygrid, sparse=True)
-
-#-- keep high-res. only in a guassian-ish "zoom" region
-
-    ymid = 41.5 * np.pi / 180.
-    xmid = 30.5 * np.pi / 180.
-
-    zoom = +100.0 - 99.0 * np.exp(-(
-        6.75 * (xmat - xmid) ** 2 +
-        12.5 * (ymat - ymid) ** 2) ** 2)
+    spac.value = hmat
     
-    spac.value = hmat*zoom 
     spac.slope = np.array(dhdx)
-    spac.value = np.minimum(hmax, spac.value)
+    spac.value = np.maximum(hmin, spac.value)
     
 #-- save spacing to a netcdf, for viz. in e.g. paraview
     
-    data = nc.Dataset("spac.nc", "w")
+    data = nc.Dataset("./data/spac.nc", "w")
     data.createDimension("nlon", spac.xgrid.size)
     data.createDimension("nlat", spac.ygrid.size) 
 
     if ("val" not in data.variables.keys()):
         data.createVariable("val", "f4", ("nlat", "nlon"))
+    if ("lon" not in data.variables.keys()):
+        data.createVariable("lon", "f4", ("nlon"))
+    if ("lat" not in data.variables.keys()):
+        data.createVariable("lat", "f4", ("nlat"))
 
+    data["lon"][:] = spac.xgrid*180/np.pi
+    data["lat"][:] = spac.ygrid*180/np.pi
     data["val"][:, :] = spac.value[:, :]
     data.close()
     
@@ -448,6 +478,13 @@ def filter_ocn():
         mesh.smids[:, 0] >= blacksea_lon_min,
         mesh.smids[:, 0] <= blacksea_lon_max
     ))
+
+    ##  going to check about a limit on Arctic region
+    arctic_lim = configurations['arctic_lim']
+    if arctic_lim < 90:
+        print(f'masking Arctic region north of {Arctic_lim}')
+        arctic_blank_region = np.where(mesh.smids[:,1] >= arctic_lim)
+        surf[arctic_blank_region] = -9999.0 # sets surface depth. Set to be < elev to mask as land
     
     black_sea = configurations['black_sea']
         # Activate regions based on black_sea option
@@ -487,7 +524,7 @@ def filter_ocn():
    
     # iterate on dry cells until none "isolated" 
     knum = np.count_nonzero(keep)
-    while (True):
+    while (True):   
         keep = filter_dry(mesh, keep)
         if (np.count_nonzero(keep) == knum): break
         knum = np.count_nonzero(keep)
@@ -555,7 +592,7 @@ if (__name__ == "__main__"):
     filter_ocn()
     
     # viz. in eg. paraview
-    jigsawpy.savevtk("test.vtk", mesh)
+    #jigsawpy.savevtk("./data/test.vtk", mesh)
     
     point = mesh.point["coord"]
     point = jigsawpy.R3toS2(geom.radii, point)  # to [lon,lat] in deg

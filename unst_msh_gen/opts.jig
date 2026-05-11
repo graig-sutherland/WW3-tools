@@ -3,9 +3,9 @@
   GEOM_FILE=geom.msh
   HFUN_FILE=./data/spac.msh
   HFUN_SCAL=absolute
-  HFUN_HMAX=25.0
-  HFUN_HMIN=5.0
-  MESH_FILE=./data/25km_to_5km_tanh_h0150_hb001_scl_50kmN86.msh
+  HFUN_HMAX=35.0
+  HFUN_HMIN=1.0
+  MESH_FILE=./data/30km_to_4km_tanh_h0150_hb001_scl_50kmN86_landmask_1m.msh
   MESH_DIMS=2
   OPTM_KERN=cvt+dqdx
   OPTM_COST=skew-cos

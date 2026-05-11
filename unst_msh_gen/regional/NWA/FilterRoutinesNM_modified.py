@@ -1,9 +1,4 @@
-
-""" Jigsaw meshes for WW3 with global bathymetry
-"""
-
-# Authors: Ali Salimi-Tarazouj, Darren Engwirda
-
+    
 # The DEM file used below can be found at:	
 # https://github.com/dengwirda/dem/releases/tag/v0.1.1
 import os
@@ -18,7 +13,7 @@ from scipy.interpolate import RegularGridInterpolator
 from scipy.sparse import csr_matrix
 from scipy.sparse.csgraph import connected_components
 
-from spacing import *
+#from spacing import *
 
 def parse_input_args():
     parser = argparse.ArgumentParser(description='Create a mask file with multiple methods.')
@@ -54,158 +49,25 @@ spac = jigsawpy.jigsaw_msh_t()
 mesh = jigsawpy.jigsaw_msh_t()
 opts = jigsawpy.jigsaw_jig_t()
 
-def create_msh():
 
-#-- create a simple uniform mesh for the globe
-    
-    args = parse_input_args()
-    configurations = load_configuration(args.config)
 
-    print("*create-msh...")
+def inject_dem(mesh):
 
-    opts.geom_file = "geom.msh"  #saves the geometry info for jigsaw
-    opts.hfun_file = "spac.msh"  #saves the final mesh spacing info 
-    opts.jcfg_file = "opts.jig"  #jigsaw ctlr file
-    
-    geom.mshID = "ellipsoid-mesh"
-    geom.radii = np.full(
-        3, 6.371E+003, dtype=geom.REALS_t)
-
-    jigsawpy.savemsh(opts.geom_file, geom)
-    
-    create_siz()
-    
-    jigsawpy.savemsh(opts.hfun_file, spac)
-    
-    # solve |dh/dx| constraints in spacing
-    jigsawpy.cmd.marche(opts, spac)
-    
-    opts.mesh_file = configurations['mesh_file']  #jigsaw format mesh file
-    
-    opts.hfun_scal = "absolute"
-    opts.hfun_hmax = configurations['hfun_hmax']           # global maximum mesh resolution (similar to hmax)
-    opts.mesh_dims = +2             # 2-dim. simplexes
-    opts.optm_iter = +64            # number of itereation for the optimization
-    opts.optm_cost = "skew-cos"
-
-    jigsawpy.cmd.jigsaw(opts, mesh)
-    
-    
-def create_siz():
-
-    args = parse_input_args()
-    configurations = load_configuration(args.config)
-
-    #-- create mesh spacing function for the globe: for uniform mesh hmax = hshr = hmin
-
-    hmax = configurations['hmax'] # maximum spacing [km] 
-    hshr = configurations['hshr']   # shoreline spacing
-    nwav = configurations['nwav']   # number of cells per sqrt(g*H)
-    hmin = configurations['hmin']  # minimum spacing
-    dhdx = configurations['dhdx']  # allowable spacing gradient: for more gradual transition use lower value
-    mask_file = configurations['mask_file'] #user defined scaling file
-    # Load the DEM file from the config
-    dem_file = configurations['dem_file']
-
-    data = nc.Dataset(dem_file,"r")
-
-    xlon = np.asarray(data["lon"][:])
-    ylat = np.asarray(data["lat"][:])
-    elev = np.asarray(data["bed_elevation"][:]) + \
-           np.asarray(data["ice_thickness"][:])
-           
-    land = form_land_mask_connect(elev, edry=2) >= 1
-    high = form_land_mask_connect(elev, edry=8) >= 1
-
-#-- init. h(x) data: impose global "reachable" land mask
-
-    hmat = np.full(
-        (elev.shape[:]), hmax, dtype=spac.FLT32_t)
-        
-    hmat[land] = hmax
-
-    if (nwav > 0.0):
-        hmat = np.minimum(
-            hmat, swe_wavelength_spacing(
-                elev, land, nwav, hmin, hmax))
-    
-#-- final h(x) data: impose global "shoreline" min. val.
-   
-    hmat[high] = hmax
-   
-    hmat = setup_shoreline_pixels(hmat, land, hshr)
-   
-#-- apply user-defined scaling: multiply h(x) by mask array
-
-    if mask_file:
-        hmat = scale_spacing_via_mask(args, hmat)
-        print("Scaling applied using mask_file:", mask_file)
-    else:
-    # Handle case where mask_file is not provided
-        print("No mask file provided. Proceeding without scaling...")
-
-#-- and a little nonlinear smoothing
-    
-    filt = filter_pixels_harmonic(hmat, exp=2)
-    hmat = np.minimum(hmat, filt)
-        
-    filt = filter_pixels_harmonic(hmat, exp=1)
-    hmat = np.minimum(hmat, filt)
-
-    hmat = np.asarray(remap_pixels_to_corner(hmat), 
-                      dtype=spac.FLT32_t)
-    
-#-- pack h(x) data to jigsaw datatype: average pixel-to-
-#-- node, careful with periodic BCs.
-    
-    spac.mshID = "ellipsoid-grid"
-    spac.radii = geom.radii
-    spac.xgrid = xlon * np.pi / 180.
-    spac.ygrid = ylat * np.pi / 180.
-
-    xmat, ymat = np.meshgrid(
-        spac.xgrid, spac.ygrid, sparse=True)
-
-#-- keep high-res. only in a guassian-ish "zoom" region
-
-    ymid = 41.5 * np.pi / 180.
-    xmid = 30.5 * np.pi / 180.
-
-    zoom = +100.0 - 99.0 * np.exp(-(
-        6.75 * (xmat - xmid) ** 2 +
-        12.5 * (ymat - ymid) ** 2) ** 2)
-    
-    spac.value = hmat*zoom 
-    spac.slope = np.array(dhdx)
-    spac.value = np.minimum(hmax, spac.value)
-    
-#-- save spacing to a netcdf, for viz. in e.g. paraview
-    
-    data = nc.Dataset("spac.nc", "w")
-    data.createDimension("nlon", spac.xgrid.size)
-    data.createDimension("nlat", spac.ygrid.size) 
-
-    if ("val" not in data.variables.keys()):
-        data.createVariable("val", "f4", ("nlat", "nlon"))
-
-    data["val"][:, :] = spac.value[:, :]
-    data.close()
-    
-
-def inject_dem():
-
-    args = parse_input_args()
-    configurations = load_configuration(args.config)
+#    args = parse_input_args()
+#    configurations = load_configuration(args.config)
 
 #-- remap a DEM on to the vertices of the mesh
 
     print("*inject-dem...")
 
         # Load the DEM file from the config
-    dem_file = configurations['dem_file']
+    #dem_file = configurations['dem_file']
+    #data = nc.Dataset(dem_file,"r")
 
-    data = nc.Dataset(dem_file,"r")
-
+#    data = nc.Dataset("../RWPS/Data/RTopo_2_0_4_GEBCO_v2023_60sec_pixel.nc","r")
+#    data = nc.Dataset("/scratch3/NCEPDEV/climate/Keston.Smith/RWPS/Data/RTopo_2_0_4_GEBCO_v2023_60sec_pixel.nc","r")
+    demFile = "/home/gsu000/projects/WW3-tools/unst_msh_gen/RTopo_2_0_4_GEBCO_v2023_60sec_pixel.nc"
+    data = nc.Dataset(demFile,"r")
     xlon = np.asarray(data["lon"][:])
     ylat = np.asarray(data["lat"][:])
     elev = np.asarray(data["bed_elevation"][:]) + \
@@ -219,6 +81,7 @@ def inject_dem():
         bounds_error=False, fill_value=None)
 
     vert = mesh.point["coord"]
+    
     mids =(vert[mesh.tria3["index"][:, 0], :] +
            vert[mesh.tria3["index"][:, 1], :] +
            vert[mesh.tria3["index"][:, 2], :] 
@@ -239,6 +102,8 @@ def inject_dem():
         (mesh.tria3.size, 2), dtype=np.float64)
     mesh.smids[:, 0] = msph[:, 0]
     mesh.smids[:, 1] = msph[:, 1]
+
+    return mesh
 
 
 def tri_to_tri(tria):
@@ -303,8 +168,8 @@ def filter_dry(mesh, mask):
     # require dry to be adj. >=1 dry cell
     isol = np.sum(conn, axis=1) <= 1
     isol = np.ravel(isol)
-
-    """
+#KWS COMMENT BELOW
+    
     # delete groups of dry if too small
     nprt, part = connected_components(
         conn, directed=False, return_labels=True)
@@ -313,8 +178,9 @@ def filter_dry(mesh, mask):
     for iprt in range(nprt):
         itri = np.argwhere(part == iprt)
         if (itri.size <= 2): mask[tris[itri]] = True
-    """
-
+    
+#KWS COMMENT ABOVE
+ 
     # otherwise mark isolated cell as ocn
     mask[tris[isol]] = True
 
@@ -355,19 +221,23 @@ def filter_wet(mesh, mask):
     return mask
 
 
-def filter_ocn():
+def filter_ocn(mesh):
 
-    args = parse_input_args()
-    configurations = load_configuration(args.config)
+#    args = parse_input_args()
+#    configurations = load_configuration(args.config)
 
 #-- use the remapped elev. to keep ocean cells
 
     print("*filter-ocn...")
-
+#KWS not sure what this is
+#    elev =(mesh.value[mesh.tria3["index"][:, 0]]
+#         + mesh.value[mesh.tria3["index"][:, 1]]
+#         + mesh.value[mesh.tria3["index"][:, 2]]
+#         + mesh.vmids) / 4.0
     elev =(mesh.value[mesh.tria3["index"][:, 0]]
          + mesh.value[mesh.tria3["index"][:, 1]]
          + mesh.value[mesh.tria3["index"][:, 2]]
-         + mesh.vmids) / 4.0
+         ) / 3.0
     # Define the Caspian Sea region
     caspian_lat_min = 34.5
     caspian_lat_max = 50.0
@@ -432,7 +302,7 @@ def filter_ocn():
     """
 
     # zssh, to cull elev. against
-    surf = np.zeros(elev.shape, dtype=np.float32)
+    surf = 4*np.ones(elev.shape, dtype=np.float32)
     # Update the surf array to include both regions
     # Define the Caspian Sea region
     caspian_region = np.logical_and.reduce((
@@ -448,59 +318,25 @@ def filter_ocn():
         mesh.smids[:, 0] >= blacksea_lon_min,
         mesh.smids[:, 0] <= blacksea_lon_max
     ))
-    
-    black_sea = configurations['black_sea']
-        # Activate regions based on black_sea option
-    if black_sea == 1:  # Caspian and Black Sea
-        surf[caspian_region] = -9999.0
-        surf[blacksea_region] = -9999.0
-    elif black_sea == 2:  # Only Caspian Sea
-        surf[caspian_region] = -9999.0
-    elif black_sea == 3:  # All except Black Sea
-        surf[caspian_region] = -9999.0
-        # Additional regions
-        additional_region = np.logical_and.reduce((
-            mesh.smids[:, 1] >= additional_lat_min,
-            mesh.smids[:, 1] <= additional_lat_max,
-            mesh.smids[:, 0] >= additional_lon_min,
-            mesh.smids[:, 0] <= additional_lon_max
-        ))
-        surf[additional_region] = 200.
 
-        additional_region2 = np.logical_and.reduce((
-            mesh.smids[:, 1] >= additional_lat_min2,
-            mesh.smids[:, 1] <= additional_lat_max2,
-            mesh.smids[:, 0] >= additional_lon_min2,
-            mesh.smids[:, 0] <= additional_lon_max2
-        ))
-        surf[additional_region2] = 300.
-
-        additional_region3 = np.logical_and.reduce((
-            mesh.smids[:, 1] >= additional_lat_min3,
-            mesh.smids[:, 1] <= additional_lat_max3,
-            mesh.smids[:, 0] >= additional_lon_min3,
-            mesh.smids[:, 0] <= additional_lon_max3
-        ))
-        surf[additional_region3] = 400.
-        
     keep = elev <= surf  # only keep tri with wet elev
-   
-    # iterate on dry cells until none "isolated" 
-    knum = np.count_nonzero(keep)
-    while (True):
-        keep = filter_dry(mesh, keep)
-        if (np.count_nonzero(keep) == knum): break
-        knum = np.count_nonzero(keep)
-    
-    mesh.tria3 = mesh.tria3[keep]
 
-    # iterate on wet cells until none "isolated"
-    keep = np.ones(mesh.tria3.size, dtype=bool)
-    knum = np.count_nonzero(keep)
-    while (True):
-        keep = filter_wet(mesh, keep)
-        if (np.count_nonzero(keep) == knum): break
-        knum = np.count_nonzero(keep)
+#    # iterate on dry cells until none "isolated" 
+#    #KWS remove filter dry for Non Global mesh
+#    knum = np.count_nonzero(keep)
+#    while (True):
+#        keep = filter_dry(mesh, keep)
+#        if (np.count_nonzero(keep) == knum): break
+#        knum = np.count_nonzero(keep)
+#    mesh.tria3 = mesh.tria3[keep]
+#
+#    # iterate on wet cells until none "isolated"
+#    keep = np.ones(mesh.tria3.size, dtype=bool)
+#    knum = np.count_nonzero(keep)
+#    while (True):
+#        keep = filter_wet(mesh, keep)
+#        if (np.count_nonzero(keep) == knum): break
+#        knum = np.count_nonzero(keep)
     
     mesh.tria3 = mesh.tria3[keep]
 
@@ -543,27 +379,48 @@ def write_gmsh_mesh(filename, node_data, tri):
 
         fileID.write("$EndElements\n")
 
+def interp_bathymetry_v0():
 
 
-if (__name__ == "__main__"):
+#-- remap a DEM on to the vertices of the mesh
 
-    args = parse_input_args()
-    configurations = load_configuration(args.config)
+    print("*interp-batyhmetry...")
 
-    create_msh()
-    inject_dem()
-    filter_ocn()
-    
-    # viz. in eg. paraview
-    jigsawpy.savevtk("test.vtk", mesh)
-    
-    point = mesh.point["coord"]
-    point = jigsawpy.R3toS2(geom.radii, point)  # to [lon,lat] in deg
-    point*= 180. / np.pi
-    depth = np.reshape(-1*mesh.value, (mesh.value.size, 1))
-    depth[depth <= 0] = 2
-    point = np.hstack((point, depth))  # append elev. as 3rd coord.
-    cells = [("triangle", mesh.tria3["index"])]
-    tri_data=cells[0][1]+1
-    ww3_mesh_file = configurations['ww3_mesh_file']
-    write_gmsh_mesh(ww3_mesh_file, point, tri_data)
+        # Load the DEM file from the config
+    dem_file = "../RWPS/Data/RTopo_2_0_4_GEBCO_v2023_60sec_pixel.nc"
+
+    data = nc.Dataset(dem_file,"r")
+
+    xlon = np.asarray(data["lon"][:])
+    ylat = np.asarray(data["lat"][:])
+    elev = np.asarray(data["bed_elevation"][:]) + \
+           np.asarray(data["ice_thickness"][:])
+        
+    xmid = 0.5 * (xlon[:-1:] + xlon[1::])
+    ymid = 0.5 * (ylat[:-1:] + ylat[1::])
+        
+    ffun = RegularGridInterpolator((ymid, xmid), elev,bounds_error=False, fill_value=None)
+
+    vert = mesh.point["coord"]
+    hdown = ffun( (vert[:, 1], vert[:, 0]) )
+
+    vert[:,2]=hdown
+    mesh.point["coord"][:,2]=vert[:,2] 
+    return mesh
+
+
+def interp_bat():
+
+#-- remap a DEM on to the vertices of the mesh
+
+    print("*interp-batyhmetry...")
+        
+    ffun = RegularGridInterpolator((topo.ygrid, topo.xgrid),topo.value,bounds_error=False, fill_value=None)
+    vert = mesh.point["coord"]
+    hdown = ffun( (vert[:, 1], vert[:, 0]) )
+    mesh.value=hdown
+    return mesh
+
+def do_nothing( ):
+    print("the end")
+
