@@ -8,5 +8,4 @@ PyGMT is available at (https://www.pygmt.org/dev/index.html).
 
 ## spacing
 Currently I am using a tanh spacing function 
-![tanh spacing]{tanh_spacing.png}
-*Figure 1: Example of tanh spacing as a function of water depth.
+![tanh spacing]{tanhspacing.png}
