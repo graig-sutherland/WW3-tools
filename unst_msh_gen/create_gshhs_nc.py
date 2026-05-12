@@ -14,7 +14,7 @@ grid = pygmt.grdlandmask(
     region=region,
     spacing=spacing,
     resolution=res,
-    mask_values=[0, 1]#, 1, 1, 1], # [ocean, land, lake, island, pond]
+    mask_values=[0, 1, 1, 1, 1], # [ocean, land, lake, island, pond]
 )
 
 # 3. Convert pygmt grid to xarray dataset
@@ -26,7 +26,7 @@ ds.landmask.attrs['units'] = 'flag'
 ds.landmask.attrs['long_name'] = 'land_sea_mask'
 
 # 5. Save as NetCDF
-output_filename = f"./data/gshhs_mask_{res}_{spacing}.nc"
+output_filename = f"./data/gshhs_mask_{res}_{spacing}_ocean.nc"
 ds.to_netcdf(output_filename)
 
 print(f"Raster saved to {output_filename}")

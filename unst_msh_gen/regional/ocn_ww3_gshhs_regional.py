@@ -1,4 +1,3 @@
-
 """ Jigsaw meshes for WW3 with global bathymetry
 """
 
@@ -15,8 +14,11 @@ import netCDF4 as nc
 import jigsawpy
 
 import geopandas as gpd
+import pandas as pd
 from geopandas.tools import sjoin
-from shapely.geometry import MultiPoint
+from shapely.geometry import MultiPoint, LineString, Polygon, MultiPolygon, mapping
+import rioxarray
+import xarray as xr
 
 from scipy.interpolate import RegularGridInterpolator
 from scipy.sparse import csr_matrix
@@ -68,37 +70,61 @@ ISOLATED = 30000.*1e0  # min surface area [km^2]
 
 # just global objects, to keep things simple...
 geom = jigsawpy.jigsaw_msh_t()
+geom3 = jigsawpy.jigsaw_msh_t()
 spac = jigsawpy.jigsaw_msh_t()
 mesh = jigsawpy.jigsaw_msh_t()
 opts = jigsawpy.jigsaw_jig_t()
+proj = jigsawpy.jigsaw_prj_t()
 
 def create_msh():
 
 #-- create a simple uniform mesh for the globe
+
+    geomFile = "/home/gsu000/data/ppp7/RDWPS/NWA_geom_outside.msh"
     
     args = parse_input_args()
     configurations = load_configuration(args.config)
 
     print("*create-msh...")
 
-    opts.geom_file = "geom.msh"  #saves the geometry info for jigsaw
+    opts.geom_file = "./data/geom.msh"  #saves the geometry info for jigsaw
+    opts.geom3_file = "./data/geom3.msh"  #saves the geometry info for jigsaw
     opts.hfun_file = "./data/spac.msh"  #saves the final mesh spacing info 
-    opts.jcfg_file = "opts.jig"  #jigsaw ctlr file
+    opts.jcfg_file = "./data/opts.jig"  #jigsaw ctlr file
+    opts.topo_file = "./data/topo.msh"
+    opts.mask_file = "./data/mask.msh"
+    opts.mesh_file = configurations['mesh_file']  #jigsaw format mesh file
     
-    geom.mshID = "ellipsoid-mesh"
-    geom.radii = np.full(
+    geom3.mshID = "ellipsoid-mesh"
+    geom3.radii = np.full(
         3, 6.371E+003, dtype=geom.REALS_t)
-
+    jigsawpy.savemsh(opts.geom3_file, geom3)
+    jigsawpy.loadmsh(geomFile, geom)
     jigsawpy.savemsh(opts.geom_file, geom)
     
     create_siz()
-    
+
+    #------------------------------------ do stereographic proj.
+    # truncate data to bounding rectangle of input PSLG--------------------
+    xmin = np.min( geom.point["coord"][:, 0])
+    ymin = np.min( geom.point["coord"][:, 1])
+    xmax = np.max( geom.point["coord"][:, 0])
+    ymax = np.max( geom.point["coord"][:, 1])
+
+    proj.prjID = 'stereographic'
+    proj.radii = +6.371E+003
+    proj.xbase = +0.500 * (xmin + xmax) * np.pi / 180.
+    proj.ybase = +0.500 * (ymin + ymax) * np.pi / 180.
+
+    geom.point["coord"][:, :] *= np.pi / 180.
+    jigsawpy.project(geom, proj, "fwd")
+    jigsawpy.project(spac, proj, "fwd")
+
+    jigsawpy.savemsh(opts.geom_file, geom)
     jigsawpy.savemsh(opts.hfun_file, spac)
     
     # solve |dh/dx| constraints in spacing
     jigsawpy.cmd.marche(opts, spac)
-    
-    opts.mesh_file = configurations['mesh_file']  #jigsaw format mesh file
     
     opts.hfun_scal = "absolute"
     opts.hfun_hmax = configurations['hfun_hmax']           # global maximum mesh resolution (similar to hmax)
@@ -114,7 +140,33 @@ def create_msh():
     opts.verbosity = +1
 
     jigsawpy.cmd.jigsaw(opts, mesh)
+
+#    # inverse projection
+    jigsawpy.project(mesh, proj, "inv")
+    jigsawpy.project(geom, proj, "inv")
+    jigsawpy.project(spac, proj, "inv")
     
+    # transform mesh nodes to degree lat, lon
+    mesh.point["coord"][:, :] = mesh.point["coord"][:, :]*180. / np.pi
+    
+    # create jigsaw R3 mesh on global surface and save to 
+    S2=mesh.point["coord"][:,[0,1]]
+    S2=S2*np.pi/180.
+    
+    R3=jigsawpy.S2toR3(mesh.radii,S2)
+    #np.savetxt("R3.txt",R3," %f ") # save 3D nodes
+    
+    meshR3 = jigsawpy.jigsaw_msh_t()
+    mesh.mshID = 'ellipsoid-mesh'
+    meshR3.tria3=mesh.tria3
+    meshR3.ndims=3
+    #make 3D coordinates 
+    nd=R3.shape
+    meshR3.vert3 = np.zeros(nd[0], dtype=mesh.VERT3_t)
+    meshR3.vert3["coord"] = R3
+    meshR3.radii = geom3.radii
+    # save
+    jigsawpy.savemsh(opts.mesh_file, meshR3)
     
 def create_siz():
 
@@ -193,36 +245,50 @@ def create_siz():
 
     hmat = np.asarray(remap_pixels_to_corner(hmat), 
                       dtype=spac.FLT32_t)
+    # truncate data to bounding rectangle of input PSLG--------------------
+    xmin = np.min( geom.point["coord"][:, 0])
+    ymin = np.min( geom.point["coord"][:, 1])
+    xmax = np.max( geom.point["coord"][:, 0])
+    ymax = np.max( geom.point["coord"][:, 1])
+
+    # create spac msh 
+    xmsk = np.logical_and( xlon > xmin , xlon < xmax )
+    ymsk = np.logical_and( ylat > ymin , ylat < ymax )
+
+    xlons, ylats = xlon[xmsk], ylat[ymsk]
+    hmats = hmat[ymsk,:]
+    hmats = hmats[:,xmsk]
     
 #-- pack h(x) data to jigsaw datatype: average pixel-to-
 #-- node, careful with periodic BCs.
     
     spac.mshID = "ellipsoid-grid"
-    spac.radii = geom.radii
-    spac.xgrid = xlon * np.pi / 180.
-    spac.ygrid = ylat * np.pi / 180.
-    spac.value = hmat
+    spac.radii = geom3.radii
+    spac.xgrid = xlons * np.pi / 180.
+    spac.ygrid = ylats * np.pi / 180.
+    spac.value = hmats
     
     spac.slope = np.array(dhdx)
     spac.value = np.maximum(hmin, spac.value)
+
     
 #-- save spacing to a netcdf, for viz. in e.g. paraview
     
-    data = nc.Dataset("./data/spac.nc", "w")
-    data.createDimension("nlon", spac.xgrid.size)
-    data.createDimension("nlat", spac.ygrid.size) 
-
-    if ("val" not in data.variables.keys()):
-        data.createVariable("val", "f4", ("nlat", "nlon"))
-    if ("lon" not in data.variables.keys()):
-        data.createVariable("lon", "f4", ("nlon"))
-    if ("lat" not in data.variables.keys()):
-        data.createVariable("lat", "f4", ("nlat"))
-
-    data["lon"][:] = spac.xgrid*180/np.pi
-    data["lat"][:] = spac.ygrid*180/np.pi
-    data["val"][:, :] = spac.value[:, :]
-    data.close()
+#`    data = nc.Dataset("./data/spac.nc", "w")
+#`    data.createDimension("nlon", spac.xgrid.size)
+#`    data.createDimension("nlat", spac.ygrid.size) 
+#`
+#`    if ("val" not in data.variables.keys()):
+#`        data.createVariable("val", "f4", ("nlat", "nlon"))
+#`    if ("lon" not in data.variables.keys()):
+#`        data.createVariable("lon", "f4", ("nlon"))
+#`    if ("lat" not in data.variables.keys()):
+#`        data.createVariable("lat", "f4", ("nlat"))
+#`
+#`    data["lon"][:] = spac.xgrid*180/np.pi
+#`    data["lat"][:] = spac.ygrid*180/np.pi
+#`    data["val"][:, :] = spac.value[:, :]
+#`    data.close()
     
 def inject_mask():
 
@@ -237,29 +303,52 @@ def inject_mask():
 #    gsshs_file = configurations['dem_file']
     mask_spacing = "1m"          # 0.1 degree resolution
     res = 'f'                 # Intermediate resolution
-    dem_file = f"./data/gshhs_mask_{res}_{mask_spacing}_ocean.nc"
-    data = nc.Dataset(dem_file,"r")
+    dem_file = f"../data/gshhs_mask_{res}_{mask_spacing}_ocean.nc"
+    ds = xr.open_dataset(dem_file)
+    da = ds["landmask"]
+    xmid = da.coords["lon"].to_numpy()
+    ymid = da.coords["lat"].to_numpy()
+    #landmask = da.to_numpy()
+    # define spatial dimensions and crs in data array
+    da.rio.set_spatial_dims(x_dim="lon", y_dim="lat", inplace=True)
+    da.rio.write_crs("epsg:4326", inplace=True)
 
-    xmid = np.asarray(data["lon"][:])
-    ymid = np.asarray(data["lat"][:])
-    landmask = np.asarray(data["landmask"][:])
+    # set values outside region to 1
+    # define base geoseries. I have coordinates from Patrick
+    rasterDir = '/home/gsu000/data/ppp7/GEBCO'
+    glon = np.genfromtxt(os.path.join(rasterDir, 'nwa5km.lon'))
+    glat = np.genfromtxt(os.path.join(rasterDir, 'nwa5km.lat'))
+    bbox_lon = np.concatenate((glon[0,::-1], glon[:,0].T, glon[-1,:], glon[::-1,-1]))
+    bbox_lon = np.mod(bbox_lon+180, 360) - 180.
+    bbox_lat = np.concatenate((glat[0,::-1], glat[:,0].T, glat[-1,:], glat[::-1,-1]))
+    boundary_coords = np.vstack((bbox_lon,bbox_lat)).T
+    # convert to geopandas series
+    search_area = Polygon(boundary_coords)
+    bound_gdf = gpd.GeoDataFrame(index=[0], crs="epsg:4326", geometry=[search_area])
+
+    # clip
+    clipped = da.rio.clip(bound_gdf.geometry.apply(mapping), bound_gdf.crs, drop=False)
+    # fillna with 0
+    landmask = clipped.fillna(1).to_numpy()
+
         
     ffun = RegularGridInterpolator(
         (ymid, xmid), landmask, 
         bounds_error=False, fill_value=None)
 
-    vert = mesh.point["coord"]
+
+    vert = mesh.vert3["coord"]
     mids =(vert[mesh.tria3["index"][:, 0], :] +
            vert[mesh.tria3["index"][:, 1], :] +
            vert[mesh.tria3["index"][:, 2], :] 
           ) / 3.0 
 
-    vsph = jigsawpy.R3toS2(geom.radii, vert)
+    vsph = jigsawpy.R3toS2(geom3.radii, vert)
     vsph*= 180. / np.pi
     
     mesh.value = ffun((vsph[:, 1], vsph[:, 0]))
     
-    msph = jigsawpy.R3toS2(geom.radii, mids)
+    msph = jigsawpy.R3toS2(geom3.radii, mids)
     msph*= 180. / np.pi
 
 #    mesh.vmids = ffun((msph[:, 1], msph[:, 0]))
@@ -296,18 +385,18 @@ def inject_dem():
         (ymid, xmid), elev, 
         bounds_error=False, fill_value=None)
 
-    vert = mesh.point["coord"]
+    vert = mesh.vert3["coord"]
     mids =(vert[mesh.tria3["index"][:, 0], :] +
            vert[mesh.tria3["index"][:, 1], :] +
            vert[mesh.tria3["index"][:, 2], :] 
           ) / 3.0 
 
-    vsph = jigsawpy.R3toS2(geom.radii, vert)
+    vsph = jigsawpy.R3toS2(geom3.radii, vert)
     vsph*= 180. / np.pi
     
     mesh.value = ffun((vsph[:, 1], vsph[:, 0]))
     
-    msph = jigsawpy.R3toS2(geom.radii, mids)
+    msph = jigsawpy.R3toS2(geom3.radii, mids)
     msph*= 180. / np.pi
 
 #    mesh.vmids = ffun((msph[:, 1], msph[:, 0]))
@@ -418,7 +507,7 @@ def filter_wet(mesh, mask):
         conn, directed=False, return_labels=True)
 
     area = jigsawpy.trivol2(
-        mesh.point["coord"], 
+        mesh.vert3["coord"], 
         mesh.tria3["index"][mask, :])
 
     for iprt in range(nprt):
@@ -442,33 +531,16 @@ def filter_ocn():
 
     print("*filter-ocn...")
 
-    ## below is if I use the GSHHS shape file to filter the land. Going to try a new method with a mask of gshhs
-#    print('read in gshhs data')
-#    coastlineDir = '/home/gsu000/data/ppp8/CoastlineData/GSHHS_shp'
-#    res = 'h'
-#    gshhsFile = os.path.join(coastlineDir, res, f'GSHHS_{res}_L1.shp')
-#    coast_gdf = gpd.read_file(gshhsFile)
-#    coast_oce_gdf = coast_gdf[(coast_gdf['level'] == 1) | (coast_gdf['level'] == 6)]
-#    print('processed gshhs data')
-#    # make geometry valid
-#    coast_oce_gdf['geometry'] = coast_oce_gdf['geometry'].make_valid()
-#    ## make point out of mesh values
-#    print('make points')
-#    mesh_points = MultiPoint(mesh.smids[:,:])
-#    mesh_points_gdf = gpd.GeoDataFrame(index=[0], crs=coast_oce_gdf.crs, geometry=[mesh_points]).explode(ignore_index=True)
-##    coast_oce_gdf_combined = coast_oce_gdf.unary_union
-#    print('Now checking if points and gshhs intersect')
-#    #keep = mesh_points_gdf.within(coast_oce_gdf_combined)
-#    pointInPolys = sjoin(mesh_points_gdf, coast_oce_gdf, how='left', predicate='intersects')
-#    print('group points')
-#    # Generate boolean flag if the point is not in any polygon
-#    keep = np.array(pointInPolys['index_right'].isna())
-    
     mask =(mesh.value[mesh.tria3["index"][:, 0]]
          + mesh.value[mesh.tria3["index"][:, 1]]
          + mesh.value[mesh.tria3["index"][:, 2]]) / 3.
-#         + mesh.vmids) / 4.
     keep = mask < 0.15 # water cells
+    
+#    elev =(mesh.value[mesh.tria3["index"][:, 0]]
+#         + mesh.value[mesh.tria3["index"][:, 1]]
+#         + mesh.value[mesh.tria3["index"][:, 2]]) / 3.0
+#    surf = np.zeros(elev.shape, dtype=np.float32)
+#    keep = elev <= surf  # only keep tri with wet elev
     # iterate on dry cells until none "isolated" 
     knum = np.count_nonzero(keep)
     while (True):   
@@ -491,10 +563,10 @@ def filter_ocn():
     # delete unused vertices and reindex
     ifwd = np.unique(mesh.tria3["index"].ravel())
     
-    irev = np.zeros(mesh.point.size, dtype=np.int32)
+    irev = np.zeros(mesh.vert3.size, dtype=np.int32)
     irev[ifwd] = np.arange(ifwd.size, dtype=np.int32)
 
-    mesh.point = mesh.point[ifwd]
+    mesh.vert3 = mesh.vert3[ifwd]
     mesh.value = mesh.value[ifwd]
     mesh.tria3["index"] = irev[mesh.tria3["index"]]
     return mesh
@@ -513,10 +585,10 @@ def filter_ocn_wetonly():
     # delete unused vertices and reindex
     ifwd = np.unique(mesh.tria3["index"].ravel())
     
-    irev = np.zeros(mesh.point.size, dtype=np.int32)
+    irev = np.zeros(mesh.vert3.size, dtype=np.int32)
     irev[ifwd] = np.arange(ifwd.size, dtype=np.int32)
 
-    mesh.point = mesh.point[ifwd]
+    mesh.vert3 = mesh.vert3[ifwd]
     mesh.value = mesh.value[ifwd]
     mesh.tria3["index"] = irev[mesh.tria3["index"]]
     return mesh
@@ -558,6 +630,8 @@ if (__name__ == "__main__"):
 
     create_msh()
 
+    jigsawpy.loadmsh(opts.mesh_file, mesh)
+
     inject_mask()
     filter_ocn()
     inject_dem()
@@ -566,8 +640,8 @@ if (__name__ == "__main__"):
     # viz. in eg. paraview
     #jigsawpy.savevtk("./data/test.vtk", mesh)
     
-    point = mesh.point["coord"]
-    point = jigsawpy.R3toS2(geom.radii, point)  # to [lon,lat] in deg
+    point = mesh.vert3["coord"]
+    point = jigsawpy.R3toS2(mesh.radii, point)  # to [lon,lat] in deg
     point*= 180. / np.pi
     depth = np.reshape(-1*mesh.value, (mesh.value.size, 1))
     depth[depth <= 0] = 1

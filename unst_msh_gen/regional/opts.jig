@@ -4,8 +4,8 @@
   HFUN_FILE=./data/spac.msh
   HFUN_SCAL=absolute
   HFUN_HMAX=50.0
-  HFUN_HMIN=1.0
-  MESH_FILE=./data/30km_to_5km_tanh_h0100_hb0p02_landmask_1m_dhdx0p2_40m88N.msh
+  HFUN_HMIN=0.5
+  MESH_FILE=./data/NWA_25km_landmask_1m.msh
   MESH_DIMS=2
   OPTM_KERN=cvt+dqdx
   OPTM_COST=skew-cos

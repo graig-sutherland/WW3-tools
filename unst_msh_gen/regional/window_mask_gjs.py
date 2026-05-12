@@ -13,6 +13,7 @@ import json
 import geopandas as gpd
 from shapely.geometry import Point
 from spacing import *
+import os
 
 def great_circle(R, lon1, lat1, lon2, lat2):
     '''
@@ -117,6 +118,20 @@ def create_mask_file(data_filename, output_filename, windows=None, shapefiles=No
     scal[high] = hmax
    
     scal = setup_shoreline_pixels(scal, land, hmin)
+
+    # apply NWA region to be max outside bounding box
+    apply_region = True
+    if apply_region:
+        rasterDir = '/home/gsu000/data/ppp7/GEBCO'
+        glon = np.genfromtxt(os.path.join(rasterDir, 'nwa5km.lon'))
+        glat = np.genfromtxt(os.path.join(rasterDir, 'nwa5km.lat'))
+        # convert glont to +-180
+        glon = np.mod(glon+180, 360) - 180
+        # Subset the meshgrid
+        mask_x = (xmid >= glon.min()) & (xmid <= glon.max())
+        mask_y = (ymid >= glat.min()) & (ymid <= glat.max())
+        # going to apply hmax to points outside
+        scal[np.ix_(~mask_y, ~mask_x)] = hmax
 
     # apply gaussian spacing
     if gaussian:

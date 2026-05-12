@@ -14,6 +14,27 @@ from scipy.sparse import csr_matrix
 from scipy.sparse.csgraph import connected_components
 
 #from spacing import *
+def meridional_curvature(phi):
+    ''' calculate meridional curvature for a given latitude (phi)'''
+    a = 6378.137 # semi-major axis
+    b = 6356.7523 # semi-minor axis
+
+    return (a*b)**2 / ( (a*np.cos(phi))**2 + (b*np.sin(phi))**2 )**1.5
+
+def prime_curvature(phi):
+    ''' calculate prime curvature for a given latitude (phi)'''
+    a = 6378.137 # semi-major axis
+    b = 6356.7523 # semi-minor axis
+    return a**2 / ( (a*np.cos(phi))**2 + (b*np.sin(phi))**2 )**0.5
+
+def calculate_distance(lon2, lat2, lo, la):
+    dlon = np.deg2rad(lon2 - lo)
+    dlat = np.deg2rad(lat2 - la)
+    phi = np.deg2rad(la)
+    M = meridional_curvature(phi)
+    N = prime_curvature(phi)*np.cos(phi)
+    dx, dy = N*dlon, M*dlat
+    return np.sqrt(dx**2 + dy**2)
 
 def parse_input_args():
     parser = argparse.ArgumentParser(description='Create a mask file with multiple methods.')
@@ -152,6 +173,27 @@ def tri_to_tri(tria):
     # ith tri is adj. to tri in ith row
     return csr_matrix((data, (rows, cols)))
 
+def filter_ocn_wetonly():
+    # iterate on wet cells until none "isolated"
+    keep = np.ones(mesh.tria3.size, dtype=bool)
+    knum = np.count_nonzero(keep)
+    while (True):
+        keep = filter_wet(mesh, keep)
+        if (np.count_nonzero(keep) == knum): break
+        knum = np.count_nonzero(keep)
+    
+    mesh.tria3 = mesh.tria3[keep]
+
+    # delete unused vertices and reindex
+    ifwd = np.unique(mesh.tria3["index"].ravel())
+    
+    irev = np.zeros(mesh.point.size, dtype=np.int32)
+    irev[ifwd] = np.arange(ifwd.size, dtype=np.int32)
+
+    mesh.point = mesh.point[ifwd]
+    mesh.value = mesh.value[ifwd]
+    mesh.tria3["index"] = irev[mesh.tria3["index"]]
+    return mesh
 
 def filter_dry(mesh, mask):
 
@@ -237,86 +279,10 @@ def filter_ocn():
          + mesh.value[mesh.tria3["index"][:, 1]]
          + mesh.value[mesh.tria3["index"][:, 2]]
          ) / 3.0
-    # Define the Caspian Sea region
-    caspian_lat_min = 34.5
-    caspian_lat_max = 50.0
-    caspian_lon_min = 44.5
-    caspian_lon_max = 55.5
-    
-    # Define the black Sea region
-    blacksea_lat_min = 40 
-    blacksea_lat_max = 47.25
-    blacksea_lon_min = 26.15
-    blacksea_lon_max = 41.5
-    
-   # Define the additional region1
-    additional_lat_min = 39.95
-    additional_lat_max = 40.6
-    additional_lon_min = 26
-    additional_lon_max = 26.8
-
-   # Define the additional region2
-    additional_lat_min2 = 40.3
-    additional_lat_max2 = 40.6
-    additional_lon_min2 = 26.8
-    additional_lon_max2 = 30
-
-   # Define the additional region3
-    additional_lat_min3 = 40.6
-    additional_lat_max3 = 41.25
-    additional_lon_min3 = 28.9
-    additional_lon_max3 = 29.1
-    
-    """
-# Print the elevations in the additional region
-    additional_elev = elev[np.logical_and.reduce((
-        mesh.smids[:, 1] >= additional_lat_min,
-        mesh.smids[:, 1] <= additional_lat_max,
-        mesh.smids[:, 0] >= additional_lon_min,
-        mesh.smids[:, 0] <= additional_lon_max
-    ))]
-    print("Elevations in the additional region:")
-    print(additional_elev)
-
-# Print the elevations in the additional region2
-    additional_elev2 = elev[np.logical_and.reduce((
-        mesh.smids[:, 1] >= additional_lat_min2,
-        mesh.smids[:, 1] <= additional_lat_max2,
-        mesh.smids[:, 0] >= additional_lon_min2,
-        mesh.smids[:, 0] <= additional_lon_max2
-    ))]
-    print("Elevations in the additional region2:")
-    print(additional_elev2)
-
-# Print the elevations in the additional region3
-    additional_elev3 = elev[np.logical_and.reduce((
-        mesh.smids[:, 1] >= additional_lat_min3,
-        mesh.smids[:, 1] <= additional_lat_max3,
-        mesh.smids[:, 0] >= additional_lon_min3,
-        mesh.smids[:, 0] <= additional_lon_max3
-    ))]
-    print("Elevations in the additional region3:")
-    print(additional_elev3)
-
-    """
 
     # zssh, to cull elev. against
     surf = -2*np.ones(elev.shape, dtype=np.float32)
     # Update the surf array to include both regions
-    # Define the Caspian Sea region
-    caspian_region = np.logical_and.reduce((
-        mesh.smids[:, 1] >= caspian_lat_min,
-        mesh.smids[:, 1] <= caspian_lat_max,
-        mesh.smids[:, 0] >= caspian_lon_min,
-        mesh.smids[:, 0] <= caspian_lon_max
-    ))
-    
-    blacksea_region = np.logical_and.reduce((
-        mesh.smids[:, 1] >= blacksea_lat_min,
-        mesh.smids[:, 1] <= blacksea_lat_max,
-        mesh.smids[:, 0] >= blacksea_lon_min,
-        mesh.smids[:, 0] <= blacksea_lon_max
-    ))
 
     filter_dry_cells = False
     if filter_dry_cells:
@@ -352,6 +318,80 @@ def filter_ocn():
     mesh.tria3["index"] = irev[mesh.tria3["index"]]
     return mesh
 
+def write_WW3(mesh, outFile, plott=False, jigsaw=True):
+    print(f'Writing WW3 mesh to {outFile}')
+    # extract the node (vertex) data from the mesh object
+    if jigsaw:
+        x = mesh.vert2['coord'][:,0]
+        y = mesh.vert2['coord'][:,1]
+    else:
+        x = mesh.vert2[:,0]
+        y = mesh.vert2[:,1]
+    z = mesh.value.squeeze()
+    # switch if flag set
+    if np.abs(z.min()) > np.abs(z.max()):
+        print(f'flipping bathymetry to output WW3 file')
+        z = -z
+        z[z<0] = 0.0
+    if y.max() > 90 or y.min() < -90:
+        ## some bad coordinates need to re do
+        sys.exit(f'Bad coordinates. Max min of lat is {y.max():.1f}/{y.min():.1f}. Not writing to {outFile}')
+
+    # extract element (triangles)
+    triangles = mesh.tria3['index']
+
+    # get open  boundaries
+    bndy_dat = np.genfromtxt('/home/gsu000/data/ppp7/RDWPS/NWA/boundary_coords_nwa.csv', delimiter=',')
+    bndy_x, bndy_y = bndy_dat.T
+    bnode = []
+    for ii in range(len(bndy_x)):
+        dist = calculate_distance(x,y, bndy_x[ii], bndy_y[ii])
+        if np.min(dist) < 5:
+            if x[np.argmin(dist)] > -90.0:
+                bnode.append([np.argmin(dist)])
+    OB_ID_flattened = np.unique(np.array(bnode, dtype=int))
+    OB_ID_flattened += 1 # ww3 uses starting index of 1
+
+    with open(outFile, 'w') as fh:
+        fh.write('$MeshFormat\n')
+        fh.write('2 0 8\n')
+        fh.write('$EndMeshFormat\n')
+        fh.write('$Nodes\n')
+        fh.write(f'{len(x)}\n')
+
+        for i in range(len(x)):
+            fh.write(f'{i+1} {x[i]:.5f} {y[i]:.5f} {z[i]:.5f}\n')
+
+        fh.write('$EndNodes\n')
+        fh.write('$Elements\n')
+        fh.write(f'{len(triangles) + len(OB_ID_flattened)}\n')
+
+        m = 0
+        for ob_id in OB_ID_flattened:
+            m += 1
+            fh.write(f'{m} 15 2 0 0 {ob_id}\n')
+
+        for i, elem in enumerate(triangles, start=m+1):
+            fh.write(f'{i} 2 3 0 {i-m} 0 {elem[0]+1} {elem[1]+1} {elem[2]+1}\n')
+
+        fh.write('$EndElements\n')
+
+    if plott:
+        import matplotlib.pyplot as plt
+        print('plotting bathymetery')
+        plt.figure(figsize=(11,8))
+        avg_z_values = np.mean(z[triangles], axis=1)
+
+        plt.tripcolor(x, y, triangles, facecolors=avg_z_values, edgecolors='none')
+        plt.plot(x[OB_ID_flattened-1], y[OB_ID_flattened-1], 'r.')
+
+        plt.colorbar(label='Depth (m)')
+        plt.xlabel('Longitude')
+        plt.ylabel('Latitude')
+        plt.title('WW3 Grid - Depth [m]')
+        plt.tight_layout()
+        plt.savefig(f'{outFile}.png', bbox_inches='tight')
+
 def write_gmsh_mesh(filename, node_data, tri):
     num_nodes = node_data.shape[0]
 
@@ -365,7 +405,7 @@ def write_gmsh_mesh(filename, node_data, tri):
 
         for i in range(num_nodes):
             fileID.write(
-                f"{i + 1}  {node_data[i, 0]:5.5f} {node_data[i, 1]:5.5f} {node_data[i, 2]:5.5f}\n"
+                f"{i + 1}  {node_data[i, 0]:.5f} {node_data[i, 1]:.5f} {node_data[i, 2]:.5f}\n"
             )
 
         fileID.write("$EndNodes\n")
@@ -379,6 +419,69 @@ def write_gmsh_mesh(filename, node_data, tri):
             fileID.write(f"{m} 2 3 0 {i+1} 0 {tri[i][0]} {tri[i][1]} {tri[i][2]}\n")
 
         fileID.write("$EndElements\n")
+
+#def write_gmsh_mesh(filename, node_data, tri, boundary_flag=False, plott=False):
+#    x, y, z = node_data.T
+#    num_nodes = len(x)
+#
+#    if y.max() > 90 or y.min() < -90:
+#        ## some bad coordinates need to re do
+#        sys.exit(f'Bad coordinates. Max min of lat is {y.max():.1f}/{y.min():.1f}. Not writing to {filename}')
+#
+#    if boundary_flag:
+#        print("Calculating boundary nodes")
+#        # get open  boundaries
+#        bndy_dat = np.genfromtxt('/home/gsu000/data/ppp7/RDWPS/NWA/boundary_coords_nwa.csv', delimiter=',')
+#        bndy_x, bndy_y = bndy_dat.T
+#        bnode = []
+#        for ii in range(len(bndy_x)):
+#            dist = calculate_distance(x, y, bndy_x[ii], bndy_y[ii])
+#            if np.min(dist) < 5:
+#                if x[np.argmin(dist)] > -90.0:
+#                    bnode.append([np.argmin(dist)])
+#        OB_ID_flattened = np.unique(np.array(bnode, dtype=int))
+#        OB_ID_flattened += 1
+#    else:
+#        OB_ID_flattened = []
+#
+#    with open(filename, 'w') as fh:
+#        fh.write('$MeshFormat\n')
+#        fh.write('2 0 8\n')
+#        fh.write('$EndMeshFormat\n')
+#        fh.write('$Nodes\n')
+#        fh.write(f'{len(x)}\n')
+#
+#        for i in range(len(x)):
+#            fh.write(f'{i+1} {x[i]:.5f} {y[i]:.5f} {z[i]:.5f}\n')
+#
+#        fh.write('$EndNodes\n')
+#        fh.write('$Elements\n')
+#        fh.write(f'{len(tri) + len(OB_ID_flattened)}\n')
+#
+#        m = 0
+#        for ob_id in OB_ID_flattened:
+#            m += 1
+#            fh.write(f'{m} 15 2 0 0 {ob_id}\n')
+#
+#        for i, elem in enumerate(tri, start=m+1):
+#            fh.write(f'{i} 2 3 0 {i-m} 0 {elem[0]} {elem[1]} {elem[2]}\n')
+#
+#        fh.write('$EndElements\n')
+#
+#    if plott:
+#        import matplotlib.pyplot as plt
+#        print('plotting bathymetery')
+#        avg_z_values = np.mean(z[tri-1], axis=1)
+#
+#        plt.figure(figsize=(11,8))
+#        plt.tripcolor(x, y, tri-1, facecolors=avg_z_values, edgecolors='none')
+#        plt.plot(x[OB_ID_flattened-1], y[OB_ID_flattened-1], 'r.')
+#        plt.colorbar(label='Depth (m)')
+#        plt.xlabel('Longitude')
+#        plt.ylabel('Latitude')
+#        plt.title('WW3 Grid - Depth [m]')
+#        plt.tight_layout()
+#        plt.savefig(f'{filename}.png', bbox_inches='tight')
 
 def write_2dm_mesh(filename, node_data, tri):
     with open(filename, 'w') as fileID:

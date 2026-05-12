@@ -38,8 +38,26 @@ if __name__ == "__main__":
     glon = np.genfromtxt(os.path.join(rasterDir, 'nwa5km.lon'))
     glat = np.genfromtxt(os.path.join(rasterDir, 'nwa5km.lat'))
     bbox_lon = np.concatenate((glon[0,::-1], glon[:,0].T, glon[-1,:], glon[::-1,-1]))
-    bbox_lon -= 360.0
+    bbox_lon = np.mod(bbox_lon+180, 360) - 180
     bbox_lat = np.concatenate((glat[0,::-1], glat[:,0].T, glat[-1,:], glat[::-1,-1]))
+    
+    # write to msh_t format
+    geom = jigsawpy.jigsaw_msh_t()
+    geom.mshID = "euclidean-mesh"
+    geom.ndims = +2
+    geom.radii = np.full(
+        3, 6.371E+003, dtype=geom.REALS_t)
+#    geom.vert2 = np.array([((pt[0],pt[1]),0) for pt in all_points], dtype=geom.VERT2_t)
+#    geom.edge2 = np.array([((ia,ib),0) for ia, ib in edges], dtype=geom.EDGE2_t)
+    geom.vert2 = np.array([((lo,la),0) for lo,la in zip(bbox_lon,bbox_lat)], dtype=geom.VERT2_t)
+    geom.edge2 = np.array([((ii,ii+1),0) for ii in range(len(bbox_lon))], dtype=geom.EDGE2_t)
+    # fix last index
+    geom.edge2['index'][-1,-1] = int(0)
+
+    jigsawpy.savemsh(f"NWA_geom_outside.msh", geom)
+    import sys; sys.exit()
+    ## not running below code at the moment
+
     boundary_coords = np.vstack((bbox_lon,bbox_lat)).T
     # convert to geopandas series
     search_area = Polygon(boundary_coords)
@@ -68,8 +86,10 @@ if __name__ == "__main__":
     if simplifyLoop:
         tolerance = 1.0/12
         filtered_loops = simplify_boundaries(boundary_loops, tolerance)
+        simplify_ext = f"simplify_tol_{tolerance:.2f}"
     else:
         filtered_loops = boundary_loops
+        simplify_ext = f"nosimplify"
 
     for loop in boundary_loops:
         n = len(loop)
@@ -86,9 +106,5 @@ if __name__ == "__main__":
         3, 6.371E+003, dtype=geom.REALS_t)
     geom.vert2 = np.array([((pt[0],pt[1]),0) for pt in all_points], dtype=geom.VERT2_t)
     geom.edge2 = np.array([((ia,ib),0) for ia, ib in edges], dtype=geom.EDGE2_t)
-#    geom.vert2 = np.array([((lo,la),0) for lo,la in zip(bbox_lon,bbox_lat)], dtype=geom.VERT2_t)
-#    geom.edge2 = np.array([((ii,ii+1),0) for ii in range(len(bbox_lon))], dtype=geom.EDGE2_t)
-#    # fix last index
-#    geom.edge2['index'][-1,-1] = int(0)
 
-    jigsawpy.savemsh("NWA_geom_nosimplify.msh", geom)
+    jigsawpy.savemsh(f"NWA_geom_outside.msh", geom)

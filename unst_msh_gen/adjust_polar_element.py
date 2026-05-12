@@ -166,7 +166,7 @@ def write_gmsh_mesh(filename, node_data, tri):
 if __name__ == "__main__":
     descriptor = sys.argv[1]
     print(f"Adjusting polar element for mesh {descriptor}")
-    filename = f"./data/{descriptor}.ww3"
+    filename = f"{descriptor}.ww3"
     
     ## read in mesh
     xy, depth, ect, bnd =  read_gmsh(filename)
@@ -249,7 +249,7 @@ if __name__ == "__main__":
         print(f' Node {n+1}: {xy[n,0]:9.3f} E, {xy[n,1]:.3f} N')
         print(f' Shifted   : {lons[n]:9.3f} E, {lats[n]:.3f} N')
     
-    outFile = f"./data/{descriptor}_adjust.ww3"
+    outFile = f"{descriptor}_adjust.ww3"
     num_nodes = len(xy)
     xys = np.copy(xy)
     tri = np.copy(ect)

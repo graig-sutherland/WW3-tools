@@ -27,17 +27,18 @@ TopographyFile = "/home/gsu000/projects/WW3-tools/unst_msh_gen/RTopo_2_0_4_GEBCO
 # tanh spacing
 hbeta = 0.02 # tanh width # make negative to have uniform spacing
 hcenter = 25
-hmin=0.5
-hmax=5.0 # test uniform grid
+hmin=5
+hmax=20.0 # test uniform grid
 dhdx=0.3
-
-exp = "NWA_geom_5km_to_500m_h025_hb02"
+#exp = "NWA_geom_5km_to_1km_h050_hb01"
+exp = "NWA_geom_test"
+print(exp)
 outDir=os.path.join(dataDir, f'{exp}_jigsawpy')
 # Create the output directory------------------------------------------
 if not os.path.exists(outDir): os.makedirs(outDir)
 
 # flag to check if I need to calculate the mesh or just apply filters
-calculate_mesh = False
+calculate_mesh = True
 meshFile = os.path.join(outDir, "NWA.R3.msh")
     
 if calculate_mesh or not os.path.exists(meshFile):
@@ -62,6 +63,20 @@ if calculate_mesh or not os.path.exists(meshFile):
     opts.jcfg_file = os.path.join(outDir,"jcfg.jig")
     opts.mesh_file = os.path.join(outDir,"mesh.msh")
     opts.hfun_file = os.path.join(outDir,"spac.msh")
+    # make mesh using JIGSAW-----------------------------------------------
+    opts.hfun_scal = "absolute"
+    opts.hfun_hmax = float("inf")       # null HFUN limits
+    opts.hfun_hmin = float(+0.00)
+    #opts.hfun_hmax = 1.25*Smax       # Unintended effects, better off null 
+    #opts.hfun_hmin = .5*Smin
+    opts.optm_iter = +64            # number of itereation for the optimization
+    opts.mesh_kern = "delfront"
+    opts.geom_feat = True
+    #opts.optm_cost = "skew-cos"
+    #opts.optm_kern = "cvt+dqdx"
+    opts.mesh_dims = +2                 # 2-dim. simplexes
+    opts.mesh_eps1 = +1.
+
     # load input data------------------------------------------------------
     jigsawpy.loadmsh(PSLGFile, geom)
     #jigsawpy.loadmsh(DistanceToCoastFile, dist)
@@ -154,17 +169,6 @@ if calculate_mesh or not os.path.exists(meshFile):
     # save smoothed hmat---------------------------------------------------
     jigsawpy.savemsh(os.path.join(outDir,"spac_proj1.msh"), spac)
     
-    # make mesh using JIGSAW-----------------------------------------------
-    opts.hfun_scal = "absolute"
-    opts.hfun_hmax = float("inf")       # null HFUN limits
-    opts.hfun_hmin = float(+0.00)
-    #opts.hfun_hmax = 1.25*Smax       # Unintended effects, better off null 
-    #opts.hfun_hmin = .5*Smin
-    opts.optm_iter = +64            # number of itereation for the optimization
-    opts.optm_cost = "skew-cos"
-    
-    opts.mesh_dims = +2                 # 2-dim. simplexes
-    opts.mesh_eps1 = +1.
     
     #opts.mesh_top1 = "true" !!!No convergece
     
@@ -249,32 +253,36 @@ point = jigsawpy.R3toS2(geom.radii, point)
 point*= 180. / np.pi
  
 depth = np.reshape(-1*mesh.value, (mesh.value.size, 1))
-depth[depth <= 0] = 2
+depth[depth <= 0] = 1
 point = np.hstack((point, depth))  # append elev. as 3rd coord.
 cells = [("triangle", mesh.tria3["index"])]
 tri_data=cells[0][1]+1
 
-#put coordinates in non standard format to avoid international date line
+# put coordinates in non standard format to avoid international date line
 lon=point[:,0]
 lon[np.where(lon>90)]=lon[np.where(lon>90)]-360
 point[:,0]=lon
 
-write_gmsh_mesh(os.path.join(outDir,"NWA.ww3"), point, tri_data)
-write_2dm_mesh(os.path.join(outDir,"NWA.2dm"), point, tri_data)
+# write boundaries
+
+write_gmsh_mesh(os.path.join(outDir,"NWA_nobound.ww3"), point, tri_data) #, boundary_flag=False, plott=True)
+#write_2dm_mesh(os.path.join(outDir,"NWA.2dm"), point, tri_data)
 
 #mesh.point["coord"]=point
 #jigsawpy.savemsh(os.path.join(outDir,"NWA.F.LLH.msh"), mesh)
 #
 #
-##write final mesh in jigsaw .msh format
-#meshR2 = jigsawpy.jigsaw_msh_t()
-##make 2D coordinates 
-#nd=point.shape
-#meshR2.ndims=2
-#meshR2.vert2 = np.zeros(nd[0], dtype=mesh.VERT2_t)
-#meshR2.vert2["coord"] = point[:,[0,1]]
-#meshR2.tria3=mesh.tria3
-#meshR2.mshID=mesh.mshID
-#
-#jigsawpy.savemsh(os.path.join(outDir, "NWA.F.LL.msh"), meshR2)
+#write final mesh in jigsaw .msh format
+meshR2 = jigsawpy.jigsaw_msh_t()
+#make 2D coordinates 
+nd=point.shape
+meshR2.ndims=2
+meshR2.vert2 = np.zeros(nd[0], dtype=mesh.VERT2_t)
+meshR2.vert2["coord"] = point[:,[0,1]]
+meshR2.tria3=mesh.tria3
+meshR2.mshID=mesh.mshID
+meshR2.value = depth.squeeze()
+
+jigsawpy.savemsh(os.path.join(outDir, "NWA.F.LL.msh"), meshR2)
     
+write_WW3(meshR2, os.path.join(outDir,"NWA.ww3"), plott=True, jigsaw=True)
