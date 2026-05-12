@@ -8,4 +8,4 @@ PyGMT is available at (https://www.pygmt.org/dev/index.html).
 
 ## spacing
 Currently I am using a tanh spacing function 
-![tanh spacing]{tanhspacing.png}
+![tanh spacing](tanhspacing.png)
