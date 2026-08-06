@@ -1,41 +1,133 @@
+"""
+combineSatInterpOut.py
+
+PURPOSE:
+
+    Create combined NetCDF files for a specified time period using
+interpolated model-to-satellite matchup data.
+
+    The script supports:
+        1. one all-in-one combined output file
+        2. separate combined output files by forecast day
+
+    These combined files are intended to simplify downstream
+post-processing, plotting, and statistical evaluation.
+
+USAGE:
+    Example:
+        python combineSatInterpOut.py \
+            -models retrov17_01 GFSv16 \
+            -WORKDIR /scratch3/NCEPDEV/marine/Ming.Chen/ursa/ww3tools \
+            -satellites JASON3 CRYOSAT2 SARAL SENTINEL3A \
+            -startdate 2024111512 \
+            -enddate   2024121718 \
+            -interval_hours 6 \
+            -max_forecast_day 16 \
+            -force_season winter \
+            -selected_years 2024
+            -INPUTDIR_BASE /work2/noaa/marine/ming.chen/GFS_Retro_Data/data/outinterp
+
+        Disable outputs:
+            --no_output_all_in_one
+            --no_output_per_day
+OUTPUT:
+    Output location:
+        {WORKDIR}/processsatdata/outcombine/{satellite}/
+
+    Output filename format:
+        1. All-in-one combined file
+            combined_all_{model}_{season}_{satellite}.nc
+        2. Per-forecast-day files
+            combined_day{DD}_{model}_{season}_{satellite}.nc
+
+Author and DATE:
+ 03/12/2026: Ming Chen (ming.chen1@noaa.gov)
+
+"""
+
 import numpy as np
 import netCDF4 as nc
 import datetime as dt
 import os
 import xarray as xr
 import glob
+import argparse
 
-'''
-Create combined NetCDF files for easier post processing.
-'''
+def _parse_yyyymmddhh(s):
+    try:
+        return dt.datetime.strptime(s, "%Y%m%d%H")
+    except ValueError as e:
+        raise ValueError(f"Invalid datetime '{s}'. Expected YYYYMMDDHH, e.g. 2024111512") from e
 
-# ================================================
-# =========== User-Defined Variables =============
-# ================================================
+def parse_args():
+    parser = argparse.ArgumentParser(
+        description="Create combined NetCDF files for easier post processing."
+    )
 
-models = ['retrov17_01', 'GFSv16']
-WORKDIR = "/scratch3/NCEPDEV/marine/Ming.Chen/ursa/ww3tools"
+    # Required
+    parser.add_argument("-models", nargs="+", required=True,
+                        help="Models list, e.g. retrov17_01 GFSv16")
+    parser.add_argument("-WORKDIR", required=True,
+                        help="Base WORKDIR containing processsatdata/")
+    parser.add_argument("-satellites", nargs="+", required=True,
+                        help="Satellites list, e.g. JASON3 CRYOSAT2 SARAL SENTINEL3A")
+    parser.add_argument("-startdate", required=True,
+                        help="Start cycle YYYYMMDDHH")
+    parser.add_argument("-enddate", required=True,
+                        help="End cycle YYYYMMDDHH")
 
-satellites = ['JASON3', 'CRYOSAT2', 'SARAL', 'SENTINEL3A']
+    # Optional knobs
+    parser.add_argument("-interval_hours", type=int, default=6,
+                        help="Cycle interval hours (default: 6)")
+    parser.add_argument("-max_forecast_day", type=int, default=16,
+                        help="Max forecast day (default: 16)")
+    parser.add_argument("-force_season", default=None,
+                        help="Force season name (winter/summer/hurricane/other) or None (default: auto)")
+    parser.add_argument("-INPUTDIR_BASE", default=None,
+                        help="Optional input directory base. Default: WORKDIR/processsatdata/outinterp")
 
-# Custom date range (only used if use_seasons = False)
-startdate = dt.datetime(2024, 11, 15, 12)    # yyyy,m,d,h
-enddate   = dt.datetime(2024, 12, 17, 18)
-interval_hours = 6                           # interval between cycles in HOURS (e.g. 6, 12, 24, 72)
+    # Outputs: keep original behavior (both True) unless disabled
+    parser.add_argument("--no_output_all_in_one", action="store_true",
+                        help="Disable all-in-one output file")
+    parser.add_argument("--no_output_per_day", action="store_true",
+                        help="Disable per-day output files")
 
-max_forecast_day = 16
+    args = parser.parse_args()
 
-force_season = "winter"                      # None = auto from data; or user override season as winter, summer, hurricane
+    # Assign globals used by the original code
+    global models, WORKDIR, satellites
+    global startdate, enddate, interval_hours, max_forecast_day
+    global force_season
+    global output_all_in_one, output_per_day
+    global INPUTDIR_BASE, OUTDIR
 
-selected_years = ['2024']                     # ['2024'], ['2024','2025'], [] = all
+    models = args.models
+    WORKDIR = args.WORKDIR
+    satellites = args.satellites
 
-output_all_in_one = True
-output_per_day    = True
+    startdate = _parse_yyyymmddhh(args.startdate)
+    enddate = _parse_yyyymmddhh(args.enddate)
+    if enddate < startdate:
+        raise ValueError("enddate must be >= startdate")
 
-# =================================================
+    interval_hours = args.interval_hours
+    max_forecast_day = args.max_forecast_day
 
-INPUTDIR_BASE = os.path.join(WORKDIR, "processsatdata", "outinterp")
-OUTDIR = os.path.join(WORKDIR, "processsatdata", "outcombine")
+    # allow passing literal "None" from CLI
+    if isinstance(args.force_season, str) and args.force_season.lower() == "none":
+        force_season = None
+    else:
+        force_season = args.force_season
+
+    output_all_in_one = not args.no_output_all_in_one
+    output_per_day = not args.no_output_per_day
+
+    if args.INPUTDIR_BASE:
+        INPUTDIR_BASE = args.INPUTDIR_BASE
+    else:
+        INPUTDIR_BASE = os.path.join(WORKDIR, "processsatdata", "outinterp")
+
+    OUTDIR = os.path.join(WORKDIR, "processsatdata", "outcombine")
 
 def determine_season(dt_obj):
     month = dt_obj.month
@@ -73,6 +165,7 @@ def get_max_forecast_days(model, season):
     return max_forecast_day
 
 def main():
+
     if not os.path.isdir(OUTDIR):
         os.makedirs(OUTDIR)
 
@@ -82,16 +175,17 @@ def main():
         all_cycles.append(now)
         now += dt.timedelta(hours=interval_hours)
 
-    if selected_years:
-        cycles_to_process = [c for c in all_cycles if str(c.year) in selected_years]
-    else:
-        cycles_to_process = all_cycles
+    cycles_to_process = all_cycles
 
     if not cycles_to_process:
-        print("No cycles after year filter.")
+        print("No cycles found between startdate and enddate.")
         return
 
-    print(f"Processing {len(cycles_to_process)} cycles (interval {interval_hours}h)")
+    print(
+        f"Processing {len(cycles_to_process)} cycles "
+        f"from {startdate:%Y%m%d%H} to {enddate:%Y%m%d%H} "
+        f"(interval {interval_hours}h)"
+    )
 
     for model in models:
         print(f"\n=== Model: {model} ===")
@@ -112,28 +206,14 @@ def main():
 
             endday = get_max_forecast_days(model, season_name)
 
-            years = sorted(set(d[:4] for d in date_strs))
-
             for sat in satellites:
-                if len(years) == 1:
-                    y = years[0]
-                    y_dates = date_strs
-                    data = collect_data(model, sat, y_dates, grids, inputdir, season_name)
-                    if not data.get('time'):
-                        continue
-                    arr = {k: np.array(v) for k, v in data.items()}
-                    adjust_wind(model, arr['fhrs'], arr['model_wnd'])
-                    write_outputs(arr, model, sat, season_name, endday, year=y)
-                else:
-                    for y in years:
-                        y_dates = [d for d in date_strs if d.startswith(y)]
-                        data = collect_data(model, sat, y_dates, grids, inputdir, season_name)
-                        if not data.get('time'):
-                            continue
-                        arr = {k: np.array(v) for k, v in data.items()}
-                        adjust_wind(model, arr['fhrs'], arr['model_wnd'])
-                        write_outputs(arr, model, sat, season_name, endday, year=y)
+                data = collect_data(model, sat, date_strs, grids, inputdir, season_name)
+                if not data.get('time'):
+                    continue
 
+                arr = {k: np.array(v) for k, v in data.items()}
+                adjust_wind(model, arr['fhrs'], arr['model_wnd'])
+                write_outputs(arr, model, sat, season_name, endday, year=None)
 
 def collect_data(model, sat, date_list, grids, inputdir, season_name):
     collected = {
@@ -201,7 +281,7 @@ def adjust_wind(model, fhrs, model_wnd):
 def write_outputs(arr, model, sat, season, endday, year):
     year_str = f"_{year}" if year else ""
 
-    def save(filename_suffix, t, la, lo, fh, ohs, ohc, ow, owc, mhs, mw):
+    def save(filename_suffix, t, la, lo, ohs, ohc, ow, owc, mhs, mw, fh):
         # All variables as double (float64)
         ds = xr.Dataset({
             'time': xr.DataArray(
@@ -307,4 +387,5 @@ def write_outputs(arr, model, sat, season, endday, year):
 
 
 if __name__ == '__main__':
+    parse_args()
     main()
