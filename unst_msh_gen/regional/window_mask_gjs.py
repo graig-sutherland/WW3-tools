@@ -65,12 +65,13 @@ def load_configuration(config_path):
         shapefiles = [(shp['path'], shp['scale']) for shp in shapefiles]
 
     dem_file = config['DataFiles']['dem_file'] if 'dem_file' in config['DataFiles'] else None
+    bbox_file = config['DataFiles']['bbox_file'] if 'bbox_file' in config['DataFiles'] else None
 
 
-    return windows, shapefiles, dem_file, gaussian, mask_file, hmax, hmin, nwav, arctic_hmax_lat, arctic_hmax_val, hcenter, hbeta
+    return windows, shapefiles, dem_file, gaussian, mask_file, hmax, hmin, nwav, arctic_hmax_lat, arctic_hmax_val, hcenter, hbeta, bbox_file
 
 
-def create_mask_file(data_filename, output_filename, windows=None, shapefiles=None, gaussian=None, hmax=25, hmin=25, nwav=-400, arctic_hmax_lat=90., arctic_hmax_val=25, hcenter=-100, hbeta=0.1, gshhs=False):
+def create_mask_file(data_filename, output_filename, bbox_file, windows=None, shapefiles=None, gaussian=None, hmax=25, hmin=25, nwav=-400, arctic_hmax_lat=90., arctic_hmax_val=25, hcenter=-100, hbeta=0.1, gshhs=False):
     # Load DEM data
     data = nc.Dataset(data_filename, "r")
     xlon = np.asarray(data["lon"][:])
@@ -122,11 +123,7 @@ def create_mask_file(data_filename, output_filename, windows=None, shapefiles=No
     # apply NWA region to be max outside bounding box
     apply_region = True
     if apply_region:
-        rasterDir = '/home/gsu000/data/ppp7/GEBCO'
-        glon = np.genfromtxt(os.path.join(rasterDir, 'nwa5km.lon'))
-        glat = np.genfromtxt(os.path.join(rasterDir, 'nwa5km.lat'))
-        # convert glont to +-180
-        glon = np.mod(glon+180, 360) - 180
+        glon, glat = np.loadtxt(bbox_file, delimiter=',', unpack=True)
         # Subset the meshgrid
         mask_x = (xmid >= glon.min()) & (xmid <= glon.max())
         mask_y = (ymid >= glat.min()) & (ymid <= glat.max())
@@ -222,6 +219,6 @@ def create_mask_file(data_filename, output_filename, windows=None, shapefiles=No
 
 if __name__ == "__main__":
     args = parse_input_args()
-    windows, shapefiles, dem_file, gaussian, mask_file, hmax, hmin, nwav, arctic_hmax_lat, arctic_hmax_val, hcenter, hbeta = load_configuration(args.config)
-    create_mask_file(dem_file, mask_file, windows, shapefiles, gaussian, hmax, hmin, nwav, arctic_hmax_lat, arctic_hmax_val, hcenter, hbeta)
+    windows, shapefiles, dem_file, gaussian, mask_file, hmax, hmin, nwav, arctic_hmax_lat, arctic_hmax_val, hcenter, hbeta, bbox_file = load_configuration(args.config)
+    create_mask_file(dem_file, mask_file, bbox_file, windows, shapefiles, gaussian, hmax, hmin, nwav, arctic_hmax_lat, arctic_hmax_val, hcenter, hbeta)
 

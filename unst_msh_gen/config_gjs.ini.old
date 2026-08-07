@@ -1,0 +1,59 @@
+; Spacing configurations for the mesh generation
+[Spacing]
+hmax = 20.0 
+; Maximum spacing in kilometers
+hshr = 5.0 
+; Spacing at the shoreline in kilometers
+nwav = -200
+; Number of cells per square root of (gravity * water depth), 140 gives H**1/2 spacing
+; negative values turn off spacin
+; really this is number of cells per M2 wavelength
+hmin = 2.0 
+; Minimum spacing in kilometers
+dhdx = 0.2
+; Maximum allowable gradient in spacing
+hcenter = 50
+; center depth for tanh spacing. set to <0 to turn off
+hbeta = 0.02
+; stretching factor for tanh spacing
+
+; Mesh generation settings
+[MeshSettings]
+;arctic_hmin_lat = 90
+;; set a limit to ensure hmin is at pole
+arctic_hmax_lat = 88
+arctic_hmax_val = 40
+hfun_hmax = 50
+hfun_hmin = 1
+; Global maximum mesh resolution, similar to hmax
+;mesh_file = ./data/25km_to_3km_g30_nwav200_50kmN86.msh
+mesh_file = ./data/20km_to_5km_tanh_h050_hb0p02_landmask_1m_dhdx0p2_40m88N.msh
+; Filename for the generated mesh in Jigsaw format
+;ww3_mesh_file = ./data/25km_to_3km_g30_nwav200_50kmN86.ww3 
+ww3_mesh_file = ./data/20km_to_5km_tanh_h050_hb0p02_landmask_1m_dhdx0p2_40m88N.ww3
+; Filename for the mesh in WW3 format
+
+; Command-line arguments and their default values
+[CommandLineArgs]
+black_sea = 1 
+;arctic_lim = 90
+; default value for arctic_lim is 90
+; Black Sea configuration mode: 1=no Black Sea, 2=detached, 3=connected
+;mask_file = ./data/wmask_25km_to_3km_g30_nwav200_50kmN86.nc 
+mask_file = ./data/wmask_20km_to_5km_tanh_h050_hb0p02_landmask_1m_dhdx0p2_40m88N.nc 
+; Path to the weighting mask file, if any
+
+; Bathymetry and Regional data
+[DataFiles]
+; DEM file
+#dem_file = /home/gsu000/data/ppp7/GEBCO/GEBCO_2026_staggered.nc
+dem_file = /home/gsu000/projects/WW3-tools/unst_msh_gen/RTopo_2_0_4_GEBCO_v2023_60sec_pixel.nc
+; shapefiles
+;shape_file = [{"path":"./data/polygon_wave_canada.geojson", "scale":5}]
+;shape_file = [{"path": "/scratch1/NCEPDEV/stmp2/Ali.Salimi/msh-gen/unst_msh_gen/VAR-MESH/Shapefiles/Arctic.shp", "scale": 10}, {"path": "/scratch1/NCEPDEV/stmp2/Ali.Salimi/msh-gen/unst_msh_gen/VAR-MESH/Shapefiles/Gulf.shp", "scale": 5}, {"path": "/scratch1/NCEPDEV/stmp2/Ali.Salimi/msh-gen/unst_msh_gen/VAR-MESH/Shapefiles/Hawaii.shp", "scale": 5}, {"path": "/scratch1/NCEPDEV/stmp2/Ali.Salimi/msh-gen/unst_msh_gen/VAR-MESH/Shapefiles/PurtoRico.shp", "scale": 10}, {"path": "/scratch1/NCEPDEV/stmp2/Ali.Salimi/msh-gen/unst_msh_gen/VAR-MESH/Shapefiles/WestCoast.shp", "scale": 5}]
+; Apply different scaling in windows
+;window_file = [{"min_lon": -180, "max_lon": -120, "min_lat": 46, "max_lat": 72, "hmax": 30, "hmin": 5}, {"min_lon": -75.6, "max_lon": -49.4, "min_lat": 41, "max_lat": 60.4, "hmax": 30, "hmin": 5}, {"min_lon": 150, "max_lon": 180, "min_lat": 0.0, "max_lat": 39.6, "hmax": 30, "hmin": 5}, {"min_lon": -48.5, "max_lon": -13.2, "min_lat": 27.3, "max_lat": 58.5, "hmax": 30, "hmin": 5}, {"min_lon": -10.1, "max_lon": -0.6, "min_lat": 34.1, "max_lat": 38.7, "hmax": 30, "hmin": 5}, {"min_lon": -180, "max_lon": -0.6, "min_lat": 34.1, "max_lat": 85, "hmax": 30, "hmin": 5}]
+;window_file = [{"min_lon": 150, "max_lon": 180, "min_lat": -1, "max_lat": 89.5, "hmax": 30, "hmin":2}, {"min_lon": -180, "max_lon": -11, "min_lat": -1, "max_lat": 89.5, "hmax": 30, "hmin":1}]
+;, {"min_lon": -180, "max_lon": -11.2, "min_lat": 30, "max_lat": 88, "hmax": 30, "hmin": 5}]
+;window_file = [{"min_lon": -98, "max_lon": -64, "min_lat": 24, "max_lat": 44.5, "hmax": 30, "hmin":10}, {"min_lon": -158, "max_lon": -155, "min_lat": 19, "max_lat": 22, "hshr": 5}, {"min_lon": -128, "max_lon": -64, "min_lat": 34.5, "max_lat": 48.5, "hshr": 5}, {"min_lon": -67.4, "max_lon": -64.1, "min_lat": 17.2, "max_lat": 18.3, "hshr": 5}]
+

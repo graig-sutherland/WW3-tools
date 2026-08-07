@@ -41,7 +41,6 @@ def load_configuration(config_path):
         'ww3_mesh_file':config.get('MeshSettings', 'WW3_mesh_file', fallback=''),
         'hfun_hmax': float(config.get('MeshSettings', 'hfun_hmax', fallback='100')),
         'hfun_hmin': float(config.get('MeshSettings', 'hfun_hmin', fallback='100')),
-        'black_sea': config.getint('CommandLineArgs', 'black_sea', fallback=3),
         'arctic_lim': config.getint('CommandLineArgs', 'arctic_lim', fallback=90),
         'mask_file': config.get('CommandLineArgs', 'mask_file', fallback=''),
         'hmax': float(config.get('Spacing', 'hmax', fallback='100.0')),
@@ -208,21 +207,21 @@ def create_siz():
     
 #-- save spacing to a netcdf, for viz. in e.g. paraview
     
-    data = nc.Dataset("./data/spac.nc", "w")
-    data.createDimension("nlon", spac.xgrid.size)
-    data.createDimension("nlat", spac.ygrid.size) 
-
-    if ("val" not in data.variables.keys()):
-        data.createVariable("val", "f4", ("nlat", "nlon"))
-    if ("lon" not in data.variables.keys()):
-        data.createVariable("lon", "f4", ("nlon"))
-    if ("lat" not in data.variables.keys()):
-        data.createVariable("lat", "f4", ("nlat"))
-
-    data["lon"][:] = spac.xgrid*180/np.pi
-    data["lat"][:] = spac.ygrid*180/np.pi
-    data["val"][:, :] = spac.value[:, :]
-    data.close()
+##    data = nc.Dataset("./data/spac.nc", "w")
+##    data.createDimension("nlon", spac.xgrid.size)
+##    data.createDimension("nlat", spac.ygrid.size) 
+##
+##    if ("val" not in data.variables.keys()):
+##        data.createVariable("val", "f4", ("nlat", "nlon"))
+##    if ("lon" not in data.variables.keys()):
+##        data.createVariable("lon", "f4", ("nlon"))
+##    if ("lat" not in data.variables.keys()):
+##        data.createVariable("lat", "f4", ("nlat"))
+##
+##    data["lon"][:] = spac.xgrid*180/np.pi
+##    data["lat"][:] = spac.ygrid*180/np.pi
+##    data["val"][:, :] = spac.value[:, :]
+##    data.close()
     
 def inject_mask():
 

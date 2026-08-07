@@ -1,39 +1,40 @@
 ; Spacing configurations for the mesh generation
 [Spacing]
-hmax = 5 
+hmax = {{HMAX}} 
 ; Maximum spacing in kilometers
-hshr = 1.0 
+hshr = {{HMIN}} 
 ; Spacing at the shoreline in kilometers
-nwav = -200
+nwav = {{NWAV}}
 ; Number of cells per square root of (gravity * water depth), 140 gives H**1/2 spacing
 ; negative values turn off spacin
 ; really this is number of cells per M2 wavelength
-hmin = 1.0 
+hmin = {{HMIN}} 
 ; Minimum spacing in kilometers
-dhdx = 0.3
+dhdx = {{DHDX}}
 ; Maximum allowable gradient in spacing
-hcenter = 50
+hcenter = {{H0}}
 ; center depth for tanh spacing. set to <0 to turn off
-hbeta = 0.02
+hbeta = {{HB}}
 ; stretching factor for tanh spacing
 
 ; Mesh generation settings
 [MeshSettings]
-hfun_hmax = 50
-hfun_hmin = 0.1
-mesh_file = ./data/ARC_5km_to_1.0km_tanh_h050_hb0.02_landmask_1m_dhdx0.3.msh
+;; set a limit to ensure hmin is at pole
+arctic_hmax_lat = {{ARCTIC_HMAX_LAT}}
+arctic_hmax_val = {{ARCTIC_HMAX_VAL}}
+hfun_hmax = {{HFUN_HMAX}}
+hfun_hmin = {{HFUN_HMIN}}
+mesh_file = ./data/{{HMAX}}km_to_{{HMIN}}km_tanh_h0{{H0}}_hb{{HB}}_landmask_1m_dhdx{{DHDX}}_{{ARCTIC_HMAX_VAL}}m{{ARCTIC_HMAX_LAT}}N.msh
 ; Filename for the generated mesh in Jigsaw format
-ww3_mesh_file = ./data/ARC_5km_to_1.0km_tanh_h050_hb0.02_landmask_1m_dhdx0.3.ww3
+ww3_mesh_file = ./data/{{HMAX}}km_to_{{HMIN}}km_tanh_h0{{H0}}_hb{{HB}}_landmask_1m_dhdx{{DHDX}}_{{ARCTIC_HMAX_VAL}}m{{ARCTIC_HMAX_LAT}}N.ww3
 
 ; Command-line arguments and their default values
 [CommandLineArgs]
-mask_file = ./data/ARC_5km_to_1.0km_tanh_h050_hb0.02_landmask_1m_dhdx0.3.nc
+; default value for arctic_lim is 90
+mask_file = ./data/{{HMAX}}km_to_{{HMIN}}km_tanh_h0{{H0}}_hb{{HB}}_landmask_1m_dhdx{{DHDX}}_{{ARCTIC_HMAX_VAL}}m{{ARCTIC_HMAX_LAT}}N.nc
 ; Path to the weighting mask file, if any
 
 ; Bathymetry and Regional data
 [DataFiles]
 ; DEM file
 dem_file = /home/gsu000/projects/WW3-tools/unst_msh_gen/RTopo_2_0_4_GEBCO_v2023_60sec_pixel.nc
-geom_file = /home/gsu000/data/ppp7/RDWPS/ARC_geom_bbox.msh
-bbox_file = /home/gsu000/data/ppp7/RDWPS/ARC5km.bndy
-PolarStereographic = 1

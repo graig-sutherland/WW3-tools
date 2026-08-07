@@ -43,8 +43,6 @@ def load_configuration(config_path):
         'ww3_mesh_file':config.get('MeshSettings', 'WW3_mesh_file', fallback=''),
         'hfun_hmax': float(config.get('MeshSettings', 'hfun_hmax', fallback='100')),
         'hfun_hmin': float(config.get('MeshSettings', 'hfun_hmin', fallback='100')),
-        'black_sea': config.getint('CommandLineArgs', 'black_sea', fallback=3),
-        'arctic_lim': config.getint('CommandLineArgs', 'arctic_lim', fallback=90),
         'mask_file': config.get('CommandLineArgs', 'mask_file', fallback=''),
         'hmax': float(config.get('Spacing', 'hmax', fallback='100.0')),
         'hshr': float(config.get('Spacing', 'hshr', fallback='100')),
@@ -52,9 +50,8 @@ def load_configuration(config_path):
         'hmin': float(config.get('Spacing', 'hmin', fallback='100.0')),
         'dhdx': float(config.get('Spacing', 'dhdx', fallback='0.05')),
         'dem_file': config.get('DataFiles', 'dem_file', fallback=''),
-        'arctic_hmax_lat': float(config.get('MeshSettings', 'arctic_hmax_lat', fallback='90')),
-        'arctic_hmax_val': float(config.get('MeshSettings', 'arctic_hmax_val', fallback='100')),
-        
+        'geom_file': config.get('DataFiles', 'geom_file', fallback=''),
+        'PolarStereographic':bool(config.get('DataFiles','PolarStereographic', fallback=0))
     }
     return configurations
 
@@ -80,12 +77,16 @@ def create_msh():
 
 #-- create a simple uniform mesh for the globe
 
-    geomFile = "/home/gsu000/data/ppp7/RDWPS/NWA_geom_outside.msh"
     
     args = parse_input_args()
     configurations = load_configuration(args.config)
 
+    geom_file = configurations["geom_file"] #"/home/gsu000/data/ppp7/RDWPS/NWA_geom_outside.msh"
+    PolarStereographic = configurations['PolarStereographic']
+
     print("*create-msh...")
+    if PolarStereographic:
+        print(f' ... using polar stereographic grid')
 
     opts.geom_file = "./data/geom.msh"  #saves the geometry info for jigsaw
     opts.geom3_file = "./data/geom3.msh"  #saves the geometry info for jigsaw
@@ -99,7 +100,7 @@ def create_msh():
     geom3.radii = np.full(
         3, 6.371E+003, dtype=geom.REALS_t)
     jigsawpy.savemsh(opts.geom3_file, geom3)
-    jigsawpy.loadmsh(geomFile, geom)
+    jigsawpy.loadmsh(geom_file, geom)
     jigsawpy.savemsh(opts.geom_file, geom)
     
     create_siz()
@@ -109,12 +110,16 @@ def create_msh():
     xmin = np.min( geom.point["coord"][:, 0])
     ymin = np.min( geom.point["coord"][:, 1])
     xmax = np.max( geom.point["coord"][:, 0])
-    ymax = np.max( geom.point["coord"][:, 1])
 
     proj.prjID = 'stereographic'
     proj.radii = +6.371E+003
     proj.xbase = +0.500 * (xmin + xmax) * np.pi / 180.
-    proj.ybase = +0.500 * (ymin + ymax) * np.pi / 180.
+    if PolarStereographic:
+        ymax=90.0
+        proj.ybase = np.pi / 2.0
+    else:
+        ymax = np.max( geom.point["coord"][:, 1])
+        proj.ybase = +0.500 * (ymin + ymax) * np.pi / 180.
 
     geom.point["coord"][:, :] *= np.pi / 180.
     jigsawpy.project(geom, proj, "fwd")
@@ -181,11 +186,10 @@ def create_siz():
     hmin = configurations['hfun_hmin']  # minimum spacing
     dhdx = configurations['dhdx']  # allowable spacing gradient: for more gradual transition use lower value
     mask_file = configurations['mask_file'] #user defined scaling file
-    arctic_hmax_lat = configurations['arctic_hmax_lat']
-    arctic_hmax_val = configurations['arctic_hmax_val']
     # Load the DEM file from the config
     dem_file = configurations['dem_file']
     print(f' ... dem file is {dem_file}')
+    PolarStereographic = configurations['PolarStereographic']
 
     data = nc.Dataset(dem_file,"r")
 
@@ -227,13 +231,6 @@ def create_siz():
     # Handle case where mask_file is not provided
         print("create_siz: No mask file provided. Proceeding without scaling...")
 
-    # check if I want to change the sizing after the mask_file is applied
-    if arctic_hmax_lat < 90:
-        print(f"create_siz: Applying scale of {arctic_hmax_val} km for lat > {arctic_hmax_lat:.1f}")
-        ymid = 0.5*(ylat[:-1]+ylat[1:])
-        hmat[ymid>arctic_hmax_lat,:] = arctic_hmax_val
-    else:
-        print(f"create_siz: No Arctic max val and using prescribed hmat val")
 
 #-- a little nonlinear smoothing
     
@@ -249,7 +246,10 @@ def create_siz():
     xmin = np.min( geom.point["coord"][:, 0])
     ymin = np.min( geom.point["coord"][:, 1])
     xmax = np.max( geom.point["coord"][:, 0])
-    ymax = np.max( geom.point["coord"][:, 1])
+    if PolarStereographic:
+        ymax = 90.0
+    else:
+        ymax = np.max( geom.point["coord"][:, 1])
 
     # create spac msh 
     xmsk = np.logical_and( xlon > xmin , xlon < xmax )
@@ -308,28 +308,29 @@ def inject_mask():
     da = ds["landmask"]
     xmid = da.coords["lon"].to_numpy()
     ymid = da.coords["lat"].to_numpy()
-    #landmask = da.to_numpy()
+    landmask = da.to_numpy()
     # define spatial dimensions and crs in data array
-    da.rio.set_spatial_dims(x_dim="lon", y_dim="lat", inplace=True)
-    da.rio.write_crs("epsg:4326", inplace=True)
+#    da.rio.set_spatial_dims(x_dim="lon", y_dim="lat", inplace=True)
+#    da.rio.write_crs("epsg:4326", inplace=True)
 
     # set values outside region to 1
-    # define base geoseries. I have coordinates from Patrick
-    rasterDir = '/home/gsu000/data/ppp7/GEBCO'
-    glon = np.genfromtxt(os.path.join(rasterDir, 'nwa5km.lon'))
-    glat = np.genfromtxt(os.path.join(rasterDir, 'nwa5km.lat'))
-    bbox_lon = np.concatenate((glon[0,::-1], glon[:,0].T, glon[-1,:], glon[::-1,-1]))
-    bbox_lon = np.mod(bbox_lon+180, 360) - 180.
-    bbox_lat = np.concatenate((glat[0,::-1], glat[:,0].T, glat[-1,:], glat[::-1,-1]))
-    boundary_coords = np.vstack((bbox_lon,bbox_lat)).T
-    # convert to geopandas series
-    search_area = Polygon(boundary_coords)
-    bound_gdf = gpd.GeoDataFrame(index=[0], crs="epsg:4326", geometry=[search_area])
-
-    # clip
-    clipped = da.rio.clip(bound_gdf.geometry.apply(mapping), bound_gdf.crs, drop=False)
-    # fillna with 0
-    landmask = clipped.fillna(1).to_numpy()
+#    geom_file = configurations["geom_file"] #"/home/gsu000/data/ppp7/RDWPS/NWA_geom_outside.msh"
+#    # define base geoseries. I have coordinates from Patrick
+#    rasterDir = '/home/gsu000/data/ppp7/GEBCO'
+#    glon = np.genfromtxt(os.path.join(rasterDir, 'nwa5km.lon'))
+#    glat = np.genfromtxt(os.path.join(rasterDir, 'nwa5km.lat'))
+#    bbox_lon = np.concatenate((glon[0,::-1], glon[:,0].T, glon[-1,:], glon[::-1,-1]))
+#    bbox_lon = np.mod(bbox_lon+180, 360) - 180.
+#    bbox_lat = np.concatenate((glat[0,::-1], glat[:,0].T, glat[-1,:], glat[::-1,-1]))
+#    boundary_coords = np.vstack((bbox_lon,bbox_lat)).T
+#    # convert to geopandas series
+#    search_area = Polygon(boundary_coords)
+#    bound_gdf = gpd.GeoDataFrame(index=[0], crs="epsg:4326", geometry=[search_area])
+#
+#    # clip
+#    clipped = da.rio.clip(bound_gdf.geometry.apply(mapping), bound_gdf.crs, drop=False)
+#    # fillna with 0
+#    landmask = clipped.fillna(1).to_numpy()
 
         
     ffun = RegularGridInterpolator(
