@@ -51,17 +51,38 @@ def load_configuration(config_path):
         'dhdx': float(config.get('Spacing', 'dhdx', fallback='0.05')),
         'dem_file': config.get('DataFiles', 'dem_file', fallback=''),
         'geom_file': config.get('DataFiles', 'geom_file', fallback=''),
+        'bbox_file': config.get('DataFiles', 'bbox_file', fallback=''),
+        'gshhs_file': config.get('DataFiles', 'gshhs_file', fallback=''),
         'PolarStereographic':bool(config.get('DataFiles','PolarStereographic', fallback=0))
     }
     return configurations
 
-def great_circle(R, lon1, lat1, lon2, lat2):
+def meridional_curvature(phi, a=6378.137, b=6356.7523):
+    ''' 
+    Calculate meridional curvature for a given latitude (phi)
+    a = semi-major axis in km
+    b = semi-minor axis in km
     '''
-    returns great circle distance using spherical law of cosines
+    return (a*b)**2 / ( (a*np.cos(phi))**2 + (b*np.sin(phi))**2 )**1.5
+
+def prime_curvature(phi, a=6378.137, b=6356.7523):
+    ''' 
+    Calculate prime curvature for a given latitude (phi)
+    a = semi-major axis in km
+    b = semi-minor axis in km
     '''
-    dlon = lon2 - lon1
-    distance = R * np.arccos(np.sin(lat1)*np.sin(lat2) + np.cos(lat1)*np.cos(lat2)*np.cos(dlon))
-    return distance
+    return a**2 / ( (a*np.cos(phi))**2 + (b*np.sin(phi))**2 )**0.5
+
+
+def calculate_distance(lon2, lat2, lo, la):
+    dlon = np.deg2rad(lon2 - lo)
+    dlat = np.deg2rad(lat2 - la)
+    phi = np.deg2rad(la)
+    M = meridional_curvature(phi)
+    N = prime_curvature(phi)*np.cos(phi)
+    dx, dy = N*dlon, M*dlat
+    return np.sqrt(dx**2 + dy**2)
+
 
 ISOLATED = 30000.*1e0  # min surface area [km^2]
 
@@ -195,8 +216,7 @@ def create_siz():
 
     xlon = np.asarray(data["lon"][:])
     ylat = np.asarray(data["lat"][:])
-    elev = np.asarray(data["bed_elevation"][:]) + \
-           np.asarray(data["ice_thickness"][:])
+    elev = np.asarray(data["bed_elevation"][:]) #+ np.asarray(data["ice_thickness"][:])
            
     land = form_land_mask_connect(elev, edry=2) >= 1
     high = form_land_mask_connect(elev, edry=8) >= 1
@@ -270,25 +290,6 @@ def create_siz():
     
     spac.slope = np.array(dhdx)
     spac.value = np.maximum(hmin, spac.value)
-
-    
-#-- save spacing to a netcdf, for viz. in e.g. paraview
-    
-#`    data = nc.Dataset("./data/spac.nc", "w")
-#`    data.createDimension("nlon", spac.xgrid.size)
-#`    data.createDimension("nlat", spac.ygrid.size) 
-#`
-#`    if ("val" not in data.variables.keys()):
-#`        data.createVariable("val", "f4", ("nlat", "nlon"))
-#`    if ("lon" not in data.variables.keys()):
-#`        data.createVariable("lon", "f4", ("nlon"))
-#`    if ("lat" not in data.variables.keys()):
-#`        data.createVariable("lat", "f4", ("nlat"))
-#`
-#`    data["lon"][:] = spac.xgrid*180/np.pi
-#`    data["lat"][:] = spac.ygrid*180/np.pi
-#`    data["val"][:, :] = spac.value[:, :]
-#`    data.close()
     
 def inject_mask():
 
@@ -300,38 +301,12 @@ def inject_mask():
     print("*inject-gshhs-mask...")
 
         # Load the DEM file from the config
-#    gsshs_file = configurations['dem_file']
-    mask_spacing = "1m"          # 0.1 degree resolution
-    res = 'f'                 # Intermediate resolution
-    dem_file = f"../data/gshhs_mask_{res}_{mask_spacing}_ocean.nc"
-    ds = xr.open_dataset(dem_file)
+    gshhs_file = configurations['gshhs_file'] #user defined scaling file
+    ds = xr.open_dataset(gshhs_file)
     da = ds["landmask"]
     xmid = da.coords["lon"].to_numpy()
     ymid = da.coords["lat"].to_numpy()
     landmask = da.to_numpy()
-    # define spatial dimensions and crs in data array
-#    da.rio.set_spatial_dims(x_dim="lon", y_dim="lat", inplace=True)
-#    da.rio.write_crs("epsg:4326", inplace=True)
-
-    # set values outside region to 1
-#    geom_file = configurations["geom_file"] #"/home/gsu000/data/ppp7/RDWPS/NWA_geom_outside.msh"
-#    # define base geoseries. I have coordinates from Patrick
-#    rasterDir = '/home/gsu000/data/ppp7/GEBCO'
-#    glon = np.genfromtxt(os.path.join(rasterDir, 'nwa5km.lon'))
-#    glat = np.genfromtxt(os.path.join(rasterDir, 'nwa5km.lat'))
-#    bbox_lon = np.concatenate((glon[0,::-1], glon[:,0].T, glon[-1,:], glon[::-1,-1]))
-#    bbox_lon = np.mod(bbox_lon+180, 360) - 180.
-#    bbox_lat = np.concatenate((glat[0,::-1], glat[:,0].T, glat[-1,:], glat[::-1,-1]))
-#    boundary_coords = np.vstack((bbox_lon,bbox_lat)).T
-#    # convert to geopandas series
-#    search_area = Polygon(boundary_coords)
-#    bound_gdf = gpd.GeoDataFrame(index=[0], crs="epsg:4326", geometry=[search_area])
-#
-#    # clip
-#    clipped = da.rio.clip(bound_gdf.geometry.apply(mapping), bound_gdf.crs, drop=False)
-#    # fillna with 0
-#    landmask = clipped.fillna(1).to_numpy()
-
         
     ffun = RegularGridInterpolator(
         (ymid, xmid), landmask, 
@@ -594,33 +569,75 @@ def filter_ocn_wetonly():
     mesh.tria3["index"] = irev[mesh.tria3["index"]]
     return mesh
 
-def write_gmsh_mesh(filename, node_data, tri):
-    num_nodes = node_data.shape[0]
+def write_gmsh_mesh(filename, node_data, triangles, bndy_file=None):
+    x, y, z = node_data.T
+    num_nodes = len(x)
 
-    # Write the mesh to the file
-    with open(filename, 'w') as fileID:
-        fileID.write("$MeshFormat\n")
-        fileID.write("2 0 8\n")
-        fileID.write("$EndMeshFormat\n")
-        fileID.write("$Nodes\n")
-        fileID.write(str(num_nodes) + "\n")
+    # get open  boundaries HARDCODED for NWA for now
+    if bndy_file:
+        bndy_dat = np.genfromtxt(bndy_file, delimiter=',')
+        bndy_x, bndy_y = bndy_dat.T
+        bnode = []
+        for ii in range(len(bndy_x)):
+            dist = calculate_distance(x,y, bndy_x[ii], bndy_y[ii])
+            if np.min(dist) < 5:
+                if x[np.argmin(dist)] > -90.0:
+                    bnode.append([np.argmin(dist)])
+        OB_ID_flattened = np.unique(np.array(bnode, dtype=int))
+        OB_ID_flattened += 1
+
+    with open(filename, 'w') as fh:
+        fh.write('$MeshFormat\n')
+        fh.write('2 0 8\n')
+        fh.write('$EndMeshFormat\n')
+        fh.write('$Nodes\n')
+        fh.write(f'{len(x)}\n')
 
         for i in range(num_nodes):
-            fileID.write(
-                f"{i + 1}  {node_data[i, 0]:5.5f} {node_data[i, 1]:5.5f} {node_data[i, 2]:5.5f}\n"
-            )
+            fh.write(f'{i+1} {x[i]:5.5f} {y[i]:5.5f} {z[i]:5.5f}\n')
 
-        fileID.write("$EndNodes\n")
-        fileID.write("$Elements\n")
-        num_elements = len(tri)
-        fileID.write(str(num_elements) + "\n")
+        fh.write('$EndNodes\n')
+        fh.write('$Elements\n')
+        fh.write(f'{len(triangles) + len(OB_ID_flattened)}\n')
 
         m = 0
-        for i in range(len(tri)):
-            m += 1
-            fileID.write(f"{m} 2 3 0 {i+1} 0 {tri[i][0]} {tri[i][1]} {tri[i][2]}\n")
+        if bndy_file:
+            for ob_id in OB_ID_flattened:
+                m += 1
+                fh.write(f'{m} 15 2 0 0 {ob_id}\n')
 
-        fileID.write("$EndElements\n")
+        for i in range(len(triangles)):
+            m += 1
+            fh.write(f"{m} 2 3 0 {i+1} 0 {triangles[i][0]} {triangles[i][1]} {triangles[i][2]}\n")
+
+
+        fh.write('$EndElements\n')
+
+
+#    # Write the mesh to the file
+#    with open(filename, 'w') as fileID:
+#        fileID.write("$MeshFormat\n")
+#        fileID.write("2 0 8\n")
+#        fileID.write("$EndMeshFormat\n")
+#        fileID.write("$Nodes\n")
+#        fileID.write(str(num_nodes) + "\n")
+#
+#        for i in range(num_nodes):
+#            fileID.write(
+#                f"{i + 1}  {node_data[i, 0]:5.5f} {node_data[i, 1]:5.5f} {node_data[i, 2]:5.5f}\n"
+#            )
+#
+#        fileID.write("$EndNodes\n")
+#        fileID.write("$Elements\n")
+#        num_elements = len(tri)
+#        fileID.write(str(num_elements) + "\n")
+#
+#        m = 0
+#        for i in range(len(tri)):
+#            m += 1
+#            fileID.write(f"{m} 2 3 0 {i+1} 0 {tri[i][0]} {tri[i][1]} {tri[i][2]}\n")
+#
+#        fileID.write("$EndElements\n")
 
 
 
@@ -650,4 +667,5 @@ if (__name__ == "__main__"):
     cells = [("triangle", mesh.tria3["index"])]
     tri_data=cells[0][1]+1
     ww3_mesh_file = configurations['ww3_mesh_file']
-    write_gmsh_mesh(ww3_mesh_file, point, tri_data)
+    bndy_file = configurations['bbox_file']
+    write_gmsh_mesh(ww3_mesh_file, point, tri_data, bndy_file)

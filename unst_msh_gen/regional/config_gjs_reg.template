@@ -36,4 +36,4 @@ mask_file = ./data/{{REGION}}_{{HMAX}}km_to_{{HMIN}}km_tanh_h0{{H0}}_hb{{HB}}_la
 dem_file = /home/gsu000/projects/WW3-tools/unst_msh_gen/RTopo_2_0_4_GEBCO_v2023_60sec_pixel.nc
 geom_file = /home/gsu000/data/ppp7/RDWPS/{{REGION}}_geom_bbox.msh
 bbox_file = /home/gsu000/data/ppp7/RDWPS/{{REGION}}5km.bndy
-PolarStereographic = {{PS}}
+gshhs_file = /home/gsu000/projects/WW3-tools/unst_msh_gen/data/gshhs_mask_f_1m_ocean.nc

@@ -71,7 +71,7 @@ def load_configuration(config_path):
     return windows, shapefiles, dem_file, gaussian, mask_file, hmax, hmin, nwav, arctic_hmax_lat, arctic_hmax_val, hcenter, hbeta, bbox_file
 
 
-def create_mask_file(data_filename, output_filename, bbox_file, windows=None, shapefiles=None, gaussian=None, hmax=25, hmin=25, nwav=-400, arctic_hmax_lat=90., arctic_hmax_val=25, hcenter=-100, hbeta=0.1, gshhs=False):
+def create_mask_file(data_filename, output_filename, bbox_file, windows=None, shapefiles=None, gaussian=None, hmax=25, hmin=25, nwav=-400, arctic_hmax_lat=90., arctic_hmax_val=25, hcenter=-100, hbeta=0.1):
     # Load DEM data
     data = nc.Dataset(data_filename, "r")
     xlon = np.asarray(data["lon"][:])

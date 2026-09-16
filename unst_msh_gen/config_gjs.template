@@ -31,7 +31,7 @@ ww3_mesh_file = ./data/{{HMAX}}km_to_{{HMIN}}km_tanh_h0{{H0}}_hb{{HB}}_landmask_
 ; Command-line arguments and their default values
 [CommandLineArgs]
 ; default value for arctic_lim is 90
-mask_file = ./data/{{HMAX}}km_to_{{HMIN}}km_tanh_h0{{H0}}_hb{{HB}}_landmask_1m_dhdx{{DHDX}}_{{ARCTIC_HMAX_VAL}}m{{ARCTIC_HMAX_LAT}}N.nc
+mask_file = ./data/{{HMAX}}km_to_{{HMIN}}km_tanh_h0{{H0}}_hb{{HB}}_landmask_1m_dhdx{{DHDX}}_{{ARCTIC_HMAX_VAL}}km{{ARCTIC_HMAX_LAT}}N.nc
 ; Path to the weighting mask file, if any
 
 ; Bathymetry and Regional data
