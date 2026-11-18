@@ -53,7 +53,7 @@ def load_configuration(config_path):
         'geom_file': config.get('DataFiles', 'geom_file', fallback=''),
         'bbox_file': config.get('DataFiles', 'bbox_file', fallback=''),
         'gshhs_file': config.get('DataFiles', 'gshhs_file', fallback=''),
-        'PolarStereographic':bool(config.get('DataFiles','PolarStereographic', fallback=0))
+        'PolarStereographic':bool(float(config.get('DataFiles','PolarStereographic', fallback="0")))
     }
     return configurations
 
@@ -84,7 +84,7 @@ def calculate_distance(lon2, lat2, lo, la):
     return np.sqrt(dx**2 + dy**2)
 
 
-ISOLATED = 30000.*1e0  # min surface area [km^2]
+ISOLATED = 1000.*1e0  # min surface area [km^2]
 
 # just global objects, to keep things simple...
 geom = jigsawpy.jigsaw_msh_t()
@@ -351,8 +351,7 @@ def inject_dem():
 
     xlon = np.asarray(data["lon"][:])
     ylat = np.asarray(data["lat"][:])
-    elev = np.asarray(data["bed_elevation"][:]) + \
-           np.asarray(data["ice_thickness"][:])
+    elev = np.asarray(data["bed_elevation"][:]) #+ np.asarray(data["ice_thickness"][:])
         
     xmid = 0.5 * (xlon[:-1:] + xlon[1::])
     ymid = 0.5 * (ylat[:-1:] + ylat[1::])
@@ -653,7 +652,7 @@ if (__name__ == "__main__"):
     inject_mask()
     filter_ocn()
     inject_dem()
-    filter_ocn_wetonly()
+    #filter_ocn_wetonly()
     
     # viz. in eg. paraview
     #jigsawpy.savevtk("./data/test.vtk", mesh)

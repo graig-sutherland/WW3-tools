@@ -1,7 +1,6 @@
 import configparser
 import argparse
 import numpy as np
-import geopandas as gpd
 import jigsawpy
 import os, sys
 
@@ -40,6 +39,48 @@ if __name__ == "__main__":
         geom.edge2['index'][-1,-1] = int(0)
     
         jigsawpy.savemsh(geom_file, geom)
+
+        # plot bbox
+        plot_bbox = True
+        if plot_bbox:
+            import matplotlib.pyplot as plt
+            import cartopy.crs as ccrs
+            import cartopy.feature as cfeature
+            from shapely.geometry import Polygon
+
+            coords = list(zip(bbox_lon[::-1], bbox_lat[::-1]))
+            poly = Polygon(coords)
+
+            fig = plt.figure(figsize=(10,10))
+            ax = plt.axes(projection=ccrs.NorthPolarStereo())
+            ax.set_extent([-180, 180, 40, 90], crs=ccrs.PlateCarree())
+
+            # Features
+            ax.add_feature(cfeature.LAND, facecolor="lightgray")
+            ax.add_feature(cfeature.OCEAN, facecolor="lightblue")
+            ax.add_feature(cfeature.COASTLINE, linewidth=0.5)
+            ax.add_feature(cfeature.BORDERS, linewidth=0.3)
+            
+            gl = ax.gridlines(
+                draw_labels=False,
+                linewidth=0.5,
+                color="gray",
+                alpha=0.5,
+            )
+            
+            # Plot polygon
+            ax.add_geometries(
+                [poly],
+                crs=ccrs.PlateCarree(),
+                facecolor="none",
+                edgecolor="red",
+                linewidth=2,
+            )
+            
+            plt.title("Polygon in North Polar Stereographic Projection")
+            fig.savefig(f"{geom_file}.png")
+            plt.close(fig)
+
 
 #    ## read in coastline data
 #    coastlineDir = '/home/gsu000/data/ppp8/CoastlineData/GSHHS_shp'
